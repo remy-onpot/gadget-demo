@@ -13,7 +13,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Sidebar */}
       <aside className="w-64 bg-[#0A2540] text-white hidden md:flex flex-col sticky top-0 h-screen shadow-xl z-20">
         <div className="p-6">
-          <span className="text-2xl font-bold tracking-tight">Payless<span className="text-orange-500">Admin</span></span>
+          <span className="text-2xl font-bold tracking-tight">The<span className="text-orange-500">Admin</span></span>
         </div>
         
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto scrollbar-hide">

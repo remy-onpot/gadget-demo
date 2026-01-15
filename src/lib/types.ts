@@ -171,9 +171,11 @@ export interface SiteSetting {
   label: string;
 }
 
+// ✅ FIX: Aligned with src/lib/filter-engine.ts
 export interface FilterRule {
-  field: string;      
-  operator: 'eq' | 'contains' | 'gt' | 'lt' | 'gte' | 'lte'; 
+  key: string;        // Changed from 'field' to 'key'
+  field?: string;     // Optional legacy support
+  operator: 'eq' | 'contains' | 'gt' | 'lt' | 'gte' | 'lte' | 'neq'; // Added 'neq'
   value: string | number;
 }
 

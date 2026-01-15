@@ -3,22 +3,22 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Banner, BANNER_RULES, BannerSlot } from '@/lib/types';
-import { Trash2, AlertCircle, CheckCircle, Loader2, Link as LinkIcon, ImagePlus, Palette } from 'lucide-react';
+import { Trash2, AlertCircle, CheckCircle, Loader2, Link as LinkIcon, ImagePlus, Palette, LayoutTemplate } from 'lucide-react';
 import Image from 'next/image';
 
 // --- CONFIGURATION ---
+// Generic groups that apply to any e-commerce store
 const SLOT_GROUPS = {
   'Homepage Hero': ['main_hero', 'side_top', 'side_bottom'],
-  'Discovery Tiles': ['tile_new', 'tile_student', 'flash'],
+  'Featured Sections': ['tile_new', 'tile_student', 'flash'], // Renamed from "Discovery Tiles"
   'Store Info': ['branch_slider', 'brand_hero']
 };
 
-// Slots that allow Text Overlays (Title, Label, Description)
 const RICH_CONTENT_SLOTS = ['main_hero', 'side_top', 'side_bottom', 'brand_hero'];
 
 export const MarketingManager = () => {
   const [banners, setBanners] = useState<Banner[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<BannerSlot>('brand_hero'); // Default to brand_hero for easier testing
+  const [selectedSlot, setSelectedSlot] = useState<BannerSlot>('brand_hero'); 
   
   // FORM STATE
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -61,9 +61,8 @@ export const MarketingManager = () => {
   const handleUpload = async () => {
     if (!imageFile || !formData.link_url) return setError("Image and Link are required");
     
-    // Validation for Text Slots
     if (isRichContent) {
-       if (!formData.title) return setError("This slot requires a Title (e.g., 'PS5 Pro') to display correctly.");
+       if (!formData.title) return setError("This slot requires a Title to display correctly.");
     }
 
     setUploading(true);
@@ -79,7 +78,6 @@ export const MarketingManager = () => {
         slot: selectedSlot,
         image_url: publicUrl,
         is_active: true,
-        // Spread the rich text data (only saves if fields are filled)
         title: formData.title,
         description: formData.description,
         label: formData.label,
@@ -128,7 +126,6 @@ export const MarketingManager = () => {
                 style={{ backgroundColor: b.bg_color || '#f3f4f6' }}
               >
                  <div className="relative w-full h-full">
-                    {/* Brand Hero uses cover, others use contain */}
                     <Image 
                         src={b.image_url} 
                         fill 
@@ -140,7 +137,6 @@ export const MarketingManager = () => {
                  <div className="absolute top-2 left-2 bg-black/70 backdrop-blur text-white text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider z-10">
                     {BANNER_RULES[b.slot]?.label}
                  </div>
-                 {/* Text Overlay Preview (Mini) */}
                  {b.title && (
                     <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent">
                         <p className="text-white text-xs font-black truncate">{b.title}</p>
@@ -221,36 +217,35 @@ export const MarketingManager = () => {
                 {isRichContent && (
                    <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100 space-y-4 animate-in slide-in-from-left-2">
                       <div>
-                         <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Overlay Title</label>
-                         <input 
-                           value={formData.title} 
-                           onChange={e => setFormData({...formData, title: e.target.value})}
-                           placeholder="e.g. PS5 Pro" 
-                           className="w-full p-3 rounded-xl border border-gray-200 font-bold focus:ring-2 ring-orange-100 outline-none"
-                         />
+                          <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Overlay Title</label>
+                          <input 
+                            value={formData.title} 
+                            onChange={e => setFormData({...formData, title: e.target.value})}
+                            placeholder="e.g. Summer Sale / New Arrivals" 
+                            className="w-full p-3 rounded-xl border border-gray-200 font-bold focus:ring-2 ring-orange-100 outline-none"
+                          />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
-                         <div>
-                            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Label / Tag</label>
-                            <input 
-                              value={formData.label} 
-                              onChange={e => setFormData({...formData, label: e.target.value})}
-                              placeholder="e.g. New Arrival" 
-                              className="w-full p-3 rounded-xl border border-gray-200 text-sm focus:ring-2 ring-orange-100 outline-none"
-                            />
-                         </div>
-                         <div>
-                            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Desc / Price</label>
-                            <input 
-                              value={formData.description} 
-                              onChange={e => setFormData({...formData, description: e.target.value})}
-                              placeholder="e.g. 30th Anniversary" 
-                              className="w-full p-3 rounded-xl border border-gray-200 text-sm focus:ring-2 ring-orange-100 outline-none"
-                            />
-                         </div>
+                          <div>
+                             <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Label / Tag</label>
+                             <input 
+                               value={formData.label} 
+                               onChange={e => setFormData({...formData, label: e.target.value})}
+                               placeholder="e.g. Limited Time" 
+                               className="w-full p-3 rounded-xl border border-gray-200 text-sm focus:ring-2 ring-orange-100 outline-none"
+                             />
+                          </div>
+                          <div>
+                             <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Description</label>
+                             <input 
+                               value={formData.description} 
+                               onChange={e => setFormData({...formData, description: e.target.value})}
+                               placeholder="e.g. Up to 50% Off" 
+                               className="w-full p-3 rounded-xl border border-gray-200 text-sm focus:ring-2 ring-orange-100 outline-none"
+                             />
+                          </div>
                       </div>
                       
-                      {/* Background Color Picker (Only for Main Hero slots, Brand Hero uses image cover) */}
                       {!['brand_hero'].includes(selectedSlot) && (
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase mb-2 block flex items-center gap-2">
@@ -278,7 +273,7 @@ export const MarketingManager = () => {
                       <input 
                         value={formData.link_url} 
                         onChange={e => setFormData({...formData, link_url: e.target.value})}
-                        placeholder="/category/gaming" 
+                        placeholder="/category/featured" 
                         className="w-full pl-9 p-3 rounded-xl border border-gray-200 font-medium focus:ring-2 ring-orange-100 outline-none"
                       />
                    </div>
@@ -300,7 +295,6 @@ export const MarketingManager = () => {
               
               {previewUrl ? (
                  <div className="relative w-full h-full flex items-center justify-center">
-                    {/* PREVIEW LOGIC: Cover for Brand Hero, Contain for others */}
                     <img 
                         src={previewUrl} 
                         className={selectedSlot === 'brand_hero' ? "w-full h-full object-cover opacity-80" : "max-w-[80%] max-h-[80%] object-contain drop-shadow-xl z-10"} 
@@ -327,7 +321,7 @@ export const MarketingManager = () => {
                        <ImagePlus size={32} />
                     </div>
                     <p className="font-bold text-slate-600">Click to Select Image</p>
-                    {selectedSlot === 'brand_hero' && <p className="text-xs text-orange-600 mt-2 font-bold">Recommended: 21:9 Cinematic Image</p>}
+                    {selectedSlot === 'brand_hero' && <p className="text-xs text-orange-600 mt-2 font-bold">Recommended: Wide Banner Image</p>}
                  </div>
               )}
            </div>
@@ -353,7 +347,7 @@ export const MarketingManager = () => {
          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Active Assets</h2>
          {renderAssetList('Homepage Hero Section', (b) => ['main_hero', 'side_top', 'side_bottom'].includes(b.slot))}
          {renderAssetList('Store & Brand Info', (b) => ['brand_hero'].includes(b.slot))}
-         {renderAssetList('Product Discovery Tiles', (b) => ['tile_new', 'tile_student', 'flash'].includes(b.slot))}
+         {renderAssetList('Featured Sections', (b) => ['tile_new', 'tile_student', 'flash'].includes(b.slot))}
          {renderAssetList('Store Info', (b) => ['branch_slider'].includes(b.slot))}
       </div>
 

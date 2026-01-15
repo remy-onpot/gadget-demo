@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Save, Loader2, Globe, Phone, MapPin, MessageCircle, Facebook, Instagram, Linkedin, Twitter } from 'lucide-react';
+import { ProductCardSkeleton } from '@/components/skeletons/ProductCardSkeleton';
 
 export const SettingsManager = () => {
   const [loading, setLoading] = useState(true);
@@ -61,8 +62,28 @@ export const SettingsManager = () => {
     setFormData(prev => ({ ...prev, [key]: val }));
   };
 
-  if (loading) return <div className="p-20 text-center"><Loader2 className="animate-spin inline text-slate-400"/></div>;
-
+if (loading) {
+  return (
+    <div className="min-h-screen bg-[#FAFAFA] font-sans pb-20">
+      {/* 1. Mock Header Skeleton */}
+      <div className="bg-white border-b border-gray-200 h-16 sticky top-0 z-30" />
+      
+      {/* 2. Mock Content Grid */}
+      <div className="container mx-auto px-4 py-8 animate-pulse">
+        {/* Title Placeholder */}
+        <div className="h-8 w-48 bg-gray-200 rounded-lg mb-8" />
+        
+        {/* The Grid of Ghosts */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+           {/* Render 8 skeletons to fill the screen */}
+           {Array.from({ length: 8 }).map((_, i) => (
+             <ProductCardSkeleton key={i} />
+           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-20">
       

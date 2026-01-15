@@ -79,7 +79,7 @@ export default function AuthPage() {
          <div className="relative z-10 text-center p-12">
             <h2 className="text-4xl font-black text-white mb-4 tracking-tight">Manage Your Empire.</h2>
             <p className="text-slate-400 text-lg max-w-md mx-auto leading-relaxed">
-               Secure access to the Payless4Tech inventory, matrix builders, and marketing assets.
+               Secure access to the admin inventory, matrix builders, and marketing assets.
             </p>
          </div>
       </div>
@@ -93,10 +93,10 @@ export default function AuthPage() {
             <div className="text-center">
                <div className="inline-flex items-center gap-1 mb-2">
                   <span className="font-black text-3xl md:text-4xl tracking-tighter text-[#00AEEF]">
-                    Payless
+                    Raymie
                   </span>
                   <span className="bg-[#F7931E] text-white px-2 py-0.5 font-black text-3xl md:text-4xl tracking-tighter leading-none -mb-1 rounded-sm shadow-sm transform -rotate-2">
-                    4tech
+                    shop
                   </span>
                </div>
                <h2 className="text-2xl font-bold text-slate-900 mt-6">
@@ -134,7 +134,7 @@ export default function AuthPage() {
                      <input 
                        type="email" 
                        required
-                       placeholder="admin@payless4tech.com"
+                       placeholder="admin@myshop.com"
                        className="w-full pl-12 pr-4 py-3 bg-white border-2 border-slate-100 rounded-xl font-medium focus:border-[#00AEEF] focus:ring-4 focus:ring-[#00AEEF]/10 outline-none transition-all"
                        value={email}
                        onChange={(e) => setEmail(e.target.value)}

@@ -24,7 +24,7 @@ export const SocialGrid = ({ settings }: SocialGridProps) => {
               More Than Just a Tech Store.
            </h2>
            <p className="text-blue-200 text-sm md:text-xl mb-6 leading-relaxed font-medium px-4">
-              We started Payless4Tech with a simple mission: to make premium technology accessible to everyone in Ghana.
+              We startedthis compoany with a simple mission: to make premium technology accessible to everyone in Ghana.
            </p>
            <Link href="/about" className="text-sm md:text-base inline-block border-b-2 border-orange-500 pb-1 font-bold text-orange-500 hover:text-white transition-colors">
               Read Our Full Story
@@ -77,7 +77,7 @@ export const SocialGrid = ({ settings }: SocialGridProps) => {
                  {[...Array(5)].map((_,i) => <Star key={i} fill="currentColor" size={16} />)}
               </div>
               <blockquote className="text-lg md:text-2xl font-bold text-white leading-snug mb-6">
-                 "I was scared to buy online, but Payless delivered to my hostel in 2 hours."
+                 "I was scared to buy online, but they delivered to my hostel in 2 hours."
               </blockquote>
               <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
                  <div className="flex items-center gap-3">

@@ -1,31 +1,29 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useTransition } from 'react';
 import { supabase } from '@/lib/supabase';
+import { updateCategoryMeta } from '@/app/admin/actions'; // ✅ Server Action
+import { Database } from '@/lib/database.types'; // ✅ Correct Types
 import { Save, Loader2, Layers, RefreshCw, ImagePlus, Upload, Trash2, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
-interface CategoryMeta {
-  slug: string;
-  title: string;
-  subtitle: string;
-  image_url: string;
-  show_overlay: boolean;
-}
+// 1. USE DB TYPE (Solves 'string | null' mismatch)
+type CategoryMeta = Database['public']['Tables']['category_metadata']['Row'];
 
 export default function LayoutsPage() {
   const [categories, setCategories] = useState<CategoryMeta[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
   
-  // UX: Track unsaved changes
+  // Server Action State
+  const [isPending, startTransition] = useTransition();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
     fetchData();
   }, []);
 
-  // Warn user if they try to leave with unsaved changes
+  // Prevent accidental navigation
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (hasUnsavedChanges) {
@@ -39,9 +37,12 @@ export default function LayoutsPage() {
 
   const fetchData = async () => {
     setLoading(true);
+    
+    // 1. Fetch Metadata
     const { data: meta } = await supabase.from('category_metadata').select('*');
     const metaMap = new Map(meta?.map(m => [m.slug, m]) || []);
 
+    // 2. Fetch Active Categories from Products
     const { data: products } = await supabase
       .from('products')
       .select('category')
@@ -51,25 +52,33 @@ export default function LayoutsPage() {
       products?.map(p => (p.category || 'uncategorized').toLowerCase()) || []
     ));
 
+    // 3. Merge (Create default entry if missing)
     const mergedList: CategoryMeta[] = activeSlugs.map(slug => {
       const existing = metaMap.get(slug);
-      return existing || { 
+      
+      // If existing found, return it
+      if (existing) return existing;
+
+      // Else create default shape
+      return { 
         slug, 
         title: slug.charAt(0).toUpperCase() + slug.slice(1) + 's',
         subtitle: 'Shop Collection', 
-        image_url: '',
-        show_overlay: true 
+        image_url: null,
+        show_overlay: true,
+        sort_order: 100,
+        created_at: new Date().toISOString()
       };
     });
 
     setCategories(mergedList);
     setLoading(false);
-    setHasUnsavedChanges(false); // Reset dirty state on load
+    setHasUnsavedChanges(false);
   };
 
   const handleUpdate = (slug: string, field: keyof CategoryMeta, value: any) => {
     setCategories(prev => prev.map(c => c.slug === slug ? { ...c, [field]: value } : c));
-    setHasUnsavedChanges(true); // <--- UX: Mark as dirty immediately
+    setHasUnsavedChanges(true);
   };
 
   const handleImageUpload = async (slug: string, file: File) => {
@@ -78,43 +87,40 @@ export default function LayoutsPage() {
 
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${slug}-${Date.now()}.${fileExt}`;
+      const fileName = `${slug}-${Date.now()}.${fileExt}`; // Unique name
       const filePath = `categories/${fileName}`;
 
+      // Upload to 'marketing' bucket (Step 9 setup)
       const { error: uploadError } = await supabase.storage
-        .from('media')
-        .upload(filePath, file);
+        .from('marketing')
+        .upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage
-        .from('media')
+        .from('marketing')
         .getPublicUrl(filePath);
 
-      // ONLY update local state. Do not save to DB yet.
       handleUpdate(slug, 'image_url', publicUrl);
+      toast.success("Image staged");
 
     } catch (error: any) {
-      alert('Upload failed: ' + error.message);
+      toast.error('Upload failed: ' + error.message);
     } finally {
       setUploading(null);
     }
   };
 
-  const saveAll = async () => {
-    setSaving(true);
-    try {
-      const { error } = await supabase.from('category_metadata').upsert(categories);
-      if (error) throw error;
-      
-      // UX: Success feedback
-      setHasUnsavedChanges(false);
-      // Optional: Show a toast here instead of alert
-    } catch (err: any) {
-      alert("❌ Error: " + err.message);
-    } finally {
-      setSaving(false);
-    }
+  const saveAll = () => {
+    startTransition(async () => {
+        try {
+            await updateCategoryMeta(categories);
+            setHasUnsavedChanges(false);
+            toast.success("Layouts saved successfully");
+        } catch (err: any) {
+            toast.error("Failed to save: " + err.message);
+        }
+    });
   };
 
   if (loading) return <div className="p-20 text-center flex flex-col items-center gap-4"><Loader2 className="animate-spin text-orange-500" size={32}/><p className="text-slate-400 font-medium">Loading your categories...</p></div>;
@@ -122,7 +128,7 @@ export default function LayoutsPage() {
   return (
     <div className="max-w-5xl mx-auto pb-32">
       
-      {/* STICKY HEADER: Always visible so you can't miss the Save button */}
+      {/* STICKY HEADER */}
       <div className="sticky top-0 z-50 bg-slate-50/95 backdrop-blur-sm py-6 border-b border-gray-200 mb-10 -mx-4 px-4 md:mx-0 md:px-0 transition-all">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -133,7 +139,6 @@ export default function LayoutsPage() {
           </div>
           
           <div className="flex items-center gap-3">
-              {/* Unsaved Changes Indicator */}
               {hasUnsavedChanges && (
                 <span className="text-xs font-bold text-amber-600 bg-amber-100 px-3 py-1 rounded-full animate-pulse flex items-center gap-1">
                    <AlertCircle size={12} /> Unsaved Changes
@@ -150,7 +155,7 @@ export default function LayoutsPage() {
 
               <button 
                 onClick={saveAll}
-                disabled={saving || !hasUnsavedChanges}
+                disabled={isPending || !hasUnsavedChanges}
                 className={`
                   px-8 py-3 rounded-xl font-bold transition shadow-lg flex items-center gap-2
                   ${hasUnsavedChanges 
@@ -159,7 +164,7 @@ export default function LayoutsPage() {
                   }
                 `}
               >
-                {saving ? <Loader2 className="animate-spin" /> : <><Save size={18} /> Save Changes</>}
+                {isPending ? <Loader2 className="animate-spin" /> : <><Save size={18} /> Save Changes</>}
               </button>
           </div>
         </div>
@@ -247,15 +252,15 @@ export default function LayoutsPage() {
                    {/* Image Uploader */}
                    <div className="md:col-span-2 space-y-2 pt-2">
                       <label className="text-xs font-bold uppercase text-slate-500 flex items-center justify-between">
-                         Background Image
-                         {cat.image_url && (
-                           <button 
-                             onClick={() => handleUpdate(cat.slug, 'image_url', '')} 
-                             className="text-red-500 text-[10px] hover:underline flex items-center gap-1"
-                           >
-                             <Trash2 size={10} /> Clear Image
-                           </button>
-                         )}
+                          Background Image
+                          {cat.image_url && (
+                            <button 
+                              onClick={() => handleUpdate(cat.slug, 'image_url', null)} 
+                              className="text-red-500 text-[10px] hover:underline flex items-center gap-1"
+                            >
+                              <Trash2 size={10} /> Clear Image
+                            </button>
+                          )}
                       </label>
 
                       <div className="flex items-center gap-4">

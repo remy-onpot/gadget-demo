@@ -1,250 +1,249 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect, useTransition } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Sliders, Plus, Trash2, Loader2, Tag } from 'lucide-react';
+import { createAttribute, updateAttribute, deleteAttribute } from '@/app/admin/actions'; // ✅ Server Actions
+import { Database } from '@/lib/database.types'; // ✅ Correct Types
+import { Plus, Trash2, Save, X, Loader2, Tags, Edit2, CheckCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
-// 1. Define strict types
-interface AttributeOption {
-  id: number;
-  category: string;
-  key: string;
-  value: string;
-  sort_order: number;
-}
+// 1. USE PRECISE DB TYPE (Fixes the 'string vs number' error)
+type AttributeOption = Database['public']['Tables']['attribute_options']['Row'];
 
-interface CategoryMeta {
-  slug: string;
-  title: string;
-}
-
-// Type for the nested structure: Category -> AttributeKey -> List of Options
-type GroupedOptions = Record<string, Record<string, AttributeOption[]>>;
+const CATEGORIES = ['laptop', 'phone', 'wearable', 'audio', 'tablet', 'gaming'];
 
 export default function AttributesPage() {
-  const [options, setOptions] = useState<AttributeOption[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
+  const [attributes, setAttributes] = useState<AttributeOption[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // New Attribute Form
-  const [newCat, setNewCat] = useState('');
-  const [newKey, setNewKey] = useState('');
-  const [newVal, setNewVal] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  // Editor State
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [formData, setFormData] = useState({
+    category: 'laptop',
+    key: 'ram',
+    value: '',
+    sort_order: 0
+  });
 
-  useEffect(() => { 
-    initData(); 
+  // Server Action State
+  const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    fetchAttributes();
   }, []);
 
-  const initData = async () => {
-    setLoading(true);
-    await Promise.all([fetchOptions(), fetchCategories()]);
-    setLoading(false);
-  };
-
-  const fetchOptions = async () => {
+  const fetchAttributes = async () => {
     const { data } = await supabase
       .from('attribute_options')
       .select('*')
-      .order('category')
-      .order('key');
-      
-    if (data) setOptions(data as AttributeOption[]);
+      .order('category', { ascending: true })
+      .order('sort_order', { ascending: true });
+    
+    if (data) setAttributes(data);
+    setLoading(false);
   };
 
-  const fetchCategories = async () => {
-    // 1. Get categories from your layouts table
-    const { data: meta } = await supabase.from('category_metadata').select('slug');
-    
-    // 2. Get categories currently used in attributes (in case some have no layout yet)
-    const { data: existingAttrs } = await supabase.from('attribute_options').select('category');
+  // --- ACTIONS ---
 
-    // 3. Merge and unique
-    const uniqueCats = Array.from(new Set([
-      ...(meta?.map(m => m.slug) || []),
-      ...(existingAttrs?.map(a => a.category) || [])
-    ])).sort();
+  const handleSave = () => {
+    if (!formData.value) return toast.error("Value is required");
 
-    setCategories(uniqueCats);
-    // Set default category to the first one if available and not set
-    if (uniqueCats.length > 0 && !newCat) setNewCat(uniqueCats[0]);
-  };
-
-  const addOption = async () => {
-    if (!newVal || !newKey || !newCat) return;
-    setSubmitting(true);
-    
-    // Normalize input
-    const cleanCat = newCat.toLowerCase().trim();
-    const cleanKey = newKey.trim(); // Keep case for display (e.g. "Screen Size")
-
-    const { error } = await supabase.from('attribute_options').insert({ 
-      category: cleanCat, 
-      key: cleanKey, 
-      value: newVal.trim(), 
-      sort_order: 99 
+    startTransition(async () => {
+      try {
+        if (editingId) {
+            // Update Existing
+            await updateAttribute(editingId, formData);
+            toast.success("Attribute updated");
+        } else {
+            // Create New
+            await createAttribute(formData);
+            toast.success("Attribute created");
+        }
+        
+        // Cleanup
+        setIsEditing(false);
+        setEditingId(null);
+        setFormData({ category: 'laptop', key: 'ram', value: '', sort_order: 0 });
+        fetchAttributes(); // Refresh list
+      } catch (e: any) {
+        toast.error("Failed to save: " + e.message);
+      }
     });
+  };
 
-    if (!error) {
-      setNewVal(''); 
-      // Refresh list
-      await fetchOptions();
-      // If user typed a brand new category, add it to our local list
-      if (!categories.includes(cleanCat)) setCategories(prev => [...prev, cleanCat].sort());
+  const handleDelete = (id: string) => {
+    if (!confirm('Delete this option?')) return;
+
+    startTransition(async () => {
+        try {
+            await deleteAttribute(id); // ✅ Passing string ID to server action
+            setAttributes(prev => prev.filter(a => a.id !== id)); // Optimistic update
+            toast.success("Deleted successfully");
+        } catch (e) {
+            toast.error("Failed to delete");
+            fetchAttributes(); // Revert
+        }
+    });
+  };
+
+  const openEditor = (attr?: AttributeOption) => {
+    if (attr) {
+      setEditingId(attr.id);
+      setFormData({
+        category: attr.category,
+        key: attr.key,
+        value: attr.value,
+        sort_order: attr.sort_order || 0
+      });
     } else {
-        alert("Error adding attribute: " + error.message);
+      setEditingId(null);
+      setFormData({ category: 'laptop', key: 'ram', value: '', sort_order: 0 });
     }
-    setSubmitting(false);
+    setIsEditing(true);
   };
 
-  const deleteOption = async (id: number) => {
-    if(!confirm("Delete this option? It will disappear from product selectors.")) return;
-    await supabase.from('attribute_options').delete().eq('id', id);
-    fetchOptions();
-  };
-
-  // 2. Grouping Logic
-  const grouped: GroupedOptions = options.reduce((acc, curr) => {
-    const cat = curr.category || 'uncategorized';
-    const key = curr.key || 'General';
-
-    if (!acc[cat]) acc[cat] = {};
-    if (!acc[cat][key]) acc[cat][key] = [];
-    
-    acc[cat][key].push(curr);
+  // Group by Category for cleaner UI
+  const grouped = attributes.reduce((acc, curr) => {
+    if (!acc[curr.category]) acc[curr.category] = [];
+    acc[curr.category].push(curr);
     return acc;
-  }, {} as GroupedOptions);
+  }, {} as Record<string, AttributeOption[]>);
 
-  if (loading) return <div className="p-20 text-center flex flex-col items-center gap-4"><Loader2 className="animate-spin text-orange-500" size={32}/><p className="text-slate-400 font-medium">Loading attributes...</p></div>;
+  if (loading) return <div className="p-20 flex justify-center"><Loader2 className="animate-spin text-slate-300"/></div>;
 
   return (
-    <div className="max-w-6xl mx-auto pb-20">
-      <div className="mb-8">
-         <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
-            <Sliders className="text-orange-500 fill-orange-100" size={32} /> 
-            Attribute Dictionary
-         </h1>
-         <p className="text-slate-500 mt-2 font-medium">Define the dropdown options available for each product category.</p>
+    <div className="max-w-5xl mx-auto pb-20">
+      
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+        <div>
+           <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
+             <Tags className="text-orange-500" /> Filter Options
+           </h1>
+           <p className="text-slate-500 font-medium mt-1">Manage the dropdown options (RAM, Storage, Condition) for sidebar filters.</p>
+        </div>
+        <button 
+          onClick={() => openEditor()}
+          className="bg-slate-900 text-white px-5 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-800 transition shadow-lg shadow-slate-900/10 active:scale-95"
+        >
+          <Plus size={18} /> Add Option
+        </button>
       </div>
 
-      {/* ADD NEW BAR */}
-      <div className="bg-slate-900 p-6 md:p-8 rounded-3xl text-white mb-12 shadow-2xl shadow-slate-900/20">
-         <div className="flex items-center gap-2 mb-6 opacity-80">
-            <Plus size={16} className="text-orange-400" />
-            <span className="text-xs font-bold uppercase tracking-widest">Add New Attribute Option</span>
-         </div>
-
-         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-             {/* Dynamic Category Input */}
-             <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase ml-1">Device / Category</label>
-                <div className="relative">
-                    <input 
-                        list="category-list"
-                        value={newCat} 
-                        onChange={e => setNewCat(e.target.value)} 
-                        className="w-full bg-slate-800 border-2 border-slate-700 hover:border-slate-600 focus:border-orange-500 p-3 rounded-xl text-white font-bold transition outline-none"
-                        placeholder="Select or Type..."
-                    />
-                    <datalist id="category-list">
-                        {categories.map(c => (
-                            <option key={c} value={c} />
-                        ))}
-                    </datalist>
+      {/* ATTRIBUTE GRID */}
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {Object.entries(grouped).map(([category, items]) => (
+            <div key={category} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+                <div className="bg-slate-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                    <span className="font-black text-slate-700 uppercase tracking-wider text-sm">{category}</span>
+                    <span className="text-xs font-bold bg-white border border-gray-200 px-2 py-0.5 rounded text-slate-400">{items.length} options</span>
                 </div>
-             </div>
-
-             {/* Attribute Key */}
-             <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase ml-1">Attribute Name</label>
-                <div className="relative">
-                    <input 
-                        list="keys-list" 
-                        value={newKey} 
-                        onChange={e => setNewKey(e.target.value)} 
-                        className="w-full bg-slate-800 border-2 border-slate-700 hover:border-slate-600 focus:border-orange-500 p-3 rounded-xl text-white font-medium placeholder:text-slate-500 transition outline-none" 
-                        placeholder="e.g. Storage" 
-                    />
-                    {/* Common suggestions */}
-                    <datalist id="keys-list">
-                       <option value="Color"/><option value="Storage"/><option value="RAM"/><option value="Processor"/><option value="Screen Size"/><option value="Condition"/>
-                    </datalist>
-                </div>
-             </div>
-
-             {/* Value */}
-             <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase ml-1">Value Option</label>
-                <div className="flex gap-3">
-                    <input 
-                        value={newVal} 
-                        onChange={e => setNewVal(e.target.value)} 
-                        className="flex-1 bg-white text-slate-900 border-2 border-white p-3 rounded-xl font-bold placeholder:text-gray-300 outline-none focus:ring-4 focus:ring-orange-500/30" 
-                        placeholder="e.g. 512GB SSD" 
-                    />
-                    <button 
-                        onClick={addOption} 
-                        disabled={submitting || !newVal} 
-                        className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-lg shadow-orange-500/20 aspect-square"
-                    >
-                        {submitting ? <Loader2 className="animate-spin" size={24} /> : <Plus size={24} />}
-                    </button>
-                </div>
-             </div>
-         </div>
-      </div>
-
-      {/* LIST */}
-      <div className="columns-1 md:columns-2 gap-8 space-y-8">
-         {Object.entries(grouped).map(([category, keys]) => (
-            <div key={category} className="break-inside-avoid bg-white border border-gray-200 rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-300">
-               <div className="bg-slate-50 p-5 border-b border-gray-100 flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                      <div className="bg-white p-2 rounded-lg border border-gray-200 text-slate-400">
-                          <Tag size={16} />
-                      </div>
-                      <h3 className="font-black text-xl capitalize text-slate-800">{category}</h3>
-                  </div>
-                  <span className="text-[10px] font-bold bg-white border border-gray-200 px-2 py-1 rounded-md text-slate-400 uppercase tracking-wider">
-                    {Object.keys(keys).length} Keys
-                  </span>
-               </div>
-               
-               <div className="p-6 space-y-8">
-                  {Object.entries(keys).map(([key, values]) => (
-                     <div key={key}>
-                        <div className="flex items-center gap-2 mb-3">
-                            <div className="h-px flex-1 bg-gray-100"></div>
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">{key}</h4>
-                            <div className="h-px flex-1 bg-gray-100"></div>
-                        </div>
-                        
-                        <div className="flex flex-wrap gap-2 justify-center">
-                           {values.map((opt) => (
-                              <div key={opt.id} className="group relative bg-white border-2 border-slate-100 px-4 py-2 rounded-xl text-sm font-bold text-slate-600 flex items-center gap-2 hover:border-red-100 hover:bg-red-50 hover:text-red-600 transition cursor-default">
-                                 {opt.value}
-                                 <button 
-                                   onClick={() => deleteOption(opt.id)} 
-                                   className="text-red-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all scale-0 group-hover:scale-100"
-                                   title="Remove option"
-                                 >
+                <div className="divide-y divide-gray-100">
+                    {items.map(attr => (
+                        <div key={attr.id} className="p-3 flex items-center justify-between hover:bg-slate-50 group transition-colors">
+                            <div>
+                                <div className="font-bold text-slate-800 text-sm">{attr.value}</div>
+                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mt-0.5">{attr.key}</div>
+                            </div>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => openEditor(attr)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                                    <Edit2 size={14} />
+                                </button>
+                                <button onClick={() => handleDelete(attr.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
                                     <Trash2 size={14} />
-                                 </button>
-                              </div>
-                           ))}
+                                </button>
+                            </div>
                         </div>
-                     </div>
-                  ))}
-               </div>
+                    ))}
+                </div>
             </div>
-         ))}
-
-         {Object.keys(grouped).length === 0 && (
-             <div className="col-span-full text-center py-20 opacity-50">
-                 <p>No attributes defined yet.</p>
-             </div>
-         )}
+        ))}
       </div>
+
+      {/* EDITOR MODAL */}
+      {isEditing && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
+           <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+             
+             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white">
+                 <h3 className="font-black text-xl text-slate-900">{editingId ? 'Edit Option' : 'New Option'}</h3>
+                 <button onClick={() => setIsEditing(false)} className="p-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-slate-900 transition">
+                   <X size={20} />
+                 </button>
+             </div>
+             
+             <div className="p-6 space-y-4">
+                 <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Category</label>
+                    <div className="flex flex-wrap gap-2">
+                        {CATEGORIES.map(cat => (
+                            <button
+                                key={cat}
+                                onClick={() => setFormData({...formData, category: cat})}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize border transition-all ${
+                                    formData.category === cat 
+                                    ? 'bg-slate-900 text-white border-slate-900' 
+                                    : 'bg-white text-slate-500 border-gray-200 hover:bg-slate-50'
+                                }`}
+                            >
+                                {cat}
+                            </button>
+                        ))}
+                    </div>
+                 </div>
+
+                 <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Attribute Key</label>
+                    <select 
+                        className="w-full p-3 bg-slate-50 border border-gray-200 rounded-xl font-bold text-sm outline-none focus:border-orange-500"
+                        value={formData.key}
+                        onChange={e => setFormData({...formData, key: e.target.value})}
+                    >
+                        <option value="ram">RAM (e.g. 8GB, 16GB)</option>
+                        <option value="storage">Storage (e.g. 256GB, 1TB)</option>
+                        <option value="screen_size">Screen Size (e.g. 13", 15")</option>
+                        <option value="processor">Processor (e.g. M1, Intel i7)</option>
+                        <option value="condition">Condition (e.g. New, Used)</option>
+                    </select>
+                 </div>
+
+                 <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Display Value</label>
+                    <input 
+                        className="w-full p-3 bg-slate-50 border border-gray-200 rounded-xl font-bold text-slate-900 outline-none focus:border-orange-500 focus:bg-white transition"
+                        placeholder="e.g. 16GB"
+                        value={formData.value}
+                        onChange={e => setFormData({...formData, value: e.target.value})}
+                    />
+                 </div>
+                 
+                 <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Sort Order</label>
+                    <input 
+                        type="number"
+                        className="w-24 p-3 bg-slate-50 border border-gray-200 rounded-xl font-bold text-slate-900 outline-none focus:border-orange-500"
+                        value={formData.sort_order}
+                        onChange={e => setFormData({...formData, sort_order: parseInt(e.target.value) || 0})}
+                    />
+                 </div>
+             </div>
+
+             <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+                 <button onClick={() => setIsEditing(false)} className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-gray-200 transition text-sm">Cancel</button>
+                 <button 
+                    onClick={handleSave} 
+                    disabled={isPending}
+                    className="bg-orange-500 text-white px-8 py-3 rounded-xl font-bold hover:bg-orange-600 shadow-lg shadow-orange-200 transition-transform active:scale-95 flex items-center gap-2 text-sm disabled:opacity-70 disabled:cursor-not-allowed"
+                 >
+                    {isPending ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+                    {editingId ? 'Update Option' : 'Create Option'}
+                 </button>
+             </div>
+           </div>
+        </div>
+      )}
+
     </div>
   );
 }

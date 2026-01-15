@@ -2,31 +2,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  X, Upload, Save, Loader2, Plus, Trash2, Layers, 
-  CheckCircle, Sparkles, Tag, LayoutGrid, 
-  Monitor, Smartphone, Headphones, Gamepad2, Camera, 
-  Printer, Watch, Tv, Tablet, Cable, Component, AlertCircle,
-  ChevronRight, Image as ImageIcon, Package, TrendingUp, DollarSign, FileText
+  X, Upload, Loader2, Trash2, 
+  CheckCircle, Sparkles, Tag, Package, 
+  TrendingUp, ChevronRight, Image as ImageIcon, FileText
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { Category } from '@/lib/types';
-
-// --- CONFIGURATION ---
-const CATEGORIES: Category[] = [
-  'laptop', 'phone', 'gaming', 'audio', 'monitor', 
-  'printer', 'accessory', 'camera', 'tv', 'tablet', 'wearable'
-];
-
-const getCategoryIcon = (c: Category) => {
-  const iconMap: Record<string, any> = {
-    laptop: LayoutGrid, phone: Smartphone, audio: Headphones,
-    gaming: Gamepad2, camera: Camera, printer: Printer,
-    wearable: Watch, tv: Tv, tablet: Tablet,
-    monitor: Monitor, accessory: Cable
-  };
-  const Icon = iconMap[c] || Component;
-  return <Icon size={18} />;
-};
+import { upsertProduct } from '@/actions/product-actions';
 
 // Types
 type AttributeOption = { id: string; key: string; value: string };
@@ -37,16 +18,11 @@ type VariantRow = {
   price: number;
   stock: number;
 };
-
-type ImageItem = {
-  id: string;
-  url?: string;
-  file?: File;
-};
+type ImageItem = { id: string; url?: string; file?: File; };
 
 interface ProductFormProps {
   onClose: () => void;
-  initialData?: any; // For Edit Mode
+  initialData?: any; 
 }
 
 export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
@@ -61,22 +37,42 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
   const [productData, setProductData] = useState({
     name: '',
     brand: '',
-    category: 'laptop' as Category,
+    category: '', // Dynamic (string)
     description: '',
     basePrice: '',
     slug: ''
   });
 
+  // --- DYNAMIC CATEGORIES STATE ---
+  const [existingCategories, setExistingCategories] = useState<string[]>([]);
+  const [isNewCategory, setIsNewCategory] = useState(false);
+
   // --- MATRIX STATE (Bulk Mode) ---
   const [availableOptions, setAvailableOptions] = useState<AttributeOption[]>([]);
-  // We use string[] here to allow Multi-Select (e.g. RAM: ["8GB", "16GB"])
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string[]>>({});
   const [generatedVariants, setGeneratedVariants] = useState<VariantRow[]>([]);
 
-  // 0. EDIT MODE: HYDRATE DATA
+  // 0. FETCH EXISTING CATEGORIES (White-Label Logic)
+  useEffect(() => {
+    const fetchCats = async () => {
+        const { data } = await supabase.from('products').select('category');
+        if (data) {
+            // Get unique categories
+            const unique = Array.from(new Set(data.map(p => p.category))).filter(Boolean) as string[];
+            setExistingCategories(unique.sort());
+            
+            // Default to first category if creating new and list exists
+            if (!initialData && unique.length > 0 && !productData.category) {
+                setProductData(prev => ({ ...prev, category: unique[0] }));
+            }
+        }
+    };
+    fetchCats();
+  }, []);
+
+  // 1. HYDRATE DATA (Edit Mode)
   useEffect(() => {
     if (initialData) {
-      // 1. General Info
       setProductData({
         name: initialData.name,
         brand: initialData.brand,
@@ -86,15 +82,10 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
         slug: initialData.slug
       });
 
-      // 2. Images (Existing URLs)
       if (initialData.base_images && Array.isArray(initialData.base_images)) {
-        setImages(initialData.base_images.map((url: string) => ({
-          id: url,
-          url: url
-        })));
+        setImages(initialData.base_images.map((url: string) => ({ id: url, url: url })));
       }
 
-      // 3. Variants (Map from DB to Form)
       if (initialData.product_variants) {
         setGeneratedVariants(initialData.product_variants.map((v: any) => ({
           id: v.id,
@@ -107,20 +98,17 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
     }
   }, [initialData]);
 
-  // 1. FETCH ATTRIBUTES
-  // 1. FETCH ATTRIBUTES (Robust Fix)
+  // 2. FETCH ATTRIBUTES BASED ON CATEGORY
   useEffect(() => {
     let isMounted = true;
-
     const fetchOptions = async () => {
-      // A. Clear existing options immediately to prevent "Laptop" options showing on "Phone"
       setAvailableOptions([]); 
       
-      // B. Only clear selections if we typically shouldn't preserve them
-      // (Logic: If I manually changed category, clear my old selections)
       if (!initialData || productData.category !== initialData.category) {
          setSelectedAttributes({});
       }
+
+      if (!productData.category) return;
 
       const { data, error } = await supabase
         .from('attribute_options')
@@ -128,38 +116,23 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
         .eq('category', productData.category)
         .order('sort_order');
       
-      if (error) {
-        console.error("Error fetching attributes:", error);
-        return; // Options remain empty []
-      }
-
       if (isMounted && data) {
         setAvailableOptions(data);
-        
-        // C. Restore selections ONLY if we are in Edit Mode AND categories match
-        // (This puts the "saved" specs back into the UI checkboxes)
         if (initialData && productData.category === initialData.category && initialData.product_variants?.[0]?.specs) {
-           // We try to rebuild the selection state from the first variant's specs
-           // This helps the UI look "pre-filled" based on the first variant found
            const firstVariantSpecs = initialData.product_variants[0].specs;
            const restoredAttributes: Record<string, string[]> = {};
-           
-           // Simple hydration: If the DB variant has "RAM: 16GB", we check that box.
            Object.entries(firstVariantSpecs).forEach(([key, val]) => {
               restoredAttributes[key] = [val as string];
            });
-           
            setSelectedAttributes(restoredAttributes);
         }
       }
     };
-
     fetchOptions();
-
     return () => { isMounted = false; };
   }, [productData.category, initialData]);
 
-  // 2. AUTO SLUG (Only for new products)
+  // 3. AUTO SLUG
   useEffect(() => {
     if (!initialData) {
       const slug = productData.name.toLowerCase()
@@ -174,6 +147,7 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
     const newErrors: Record<string, string> = {};
     if (!productData.name.trim()) newErrors.name = 'Product name is required';
     if (!productData.brand.trim()) newErrors.brand = 'Brand is required';
+    if (!productData.category.trim()) newErrors.category = 'Category is required';
     if (!productData.basePrice || Number(productData.basePrice) <= 0) newErrors.basePrice = 'Valid price required';
     if (images.length === 0) newErrors.images = 'At least one image required';
     setErrors(newErrors);
@@ -209,20 +183,15 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
     setSelectedAttributes(prev => {
       const current = prev[key] || [];
       const exists = current.includes(value);
-      // Toggle logic: Add if missing, remove if present
-      const updated = exists 
-        ? current.filter(v => v !== value) 
-        : [...current, value];
+      const updated = exists ? current.filter(v => v !== value) : [...current, value];
       return { ...prev, [key]: updated };
     });
   };
 
   const generateMatrix = () => {
-    // 1. Filter out empty categories
     const keys = Object.keys(selectedAttributes).filter(k => selectedAttributes[k].length > 0);
     if (keys.length === 0) return alert("Please select at least one attribute.");
 
-    // 2. Cartesian Product
     const combine = ([head, ...tail]: string[]): any[] => {
       if (!head) return [{}];
       const tailCombos = combine(tail);
@@ -231,10 +200,8 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
       });
     };
 
-    // 3. Generate & Map
     const combinations = combine(keys);
     const newRows: VariantRow[] = combinations.map((combo, idx) => {
-      // Extract condition intelligently
       const conditionKey = Object.keys(combo).find(k => k.toLowerCase() === 'condition');
       const condition = conditionKey ? combo[conditionKey] : 'New';
       
@@ -252,7 +219,6 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
       };
     });
 
-    // 4. Smart Merge (Avoid duplicates)
     setGeneratedVariants(prev => {
       const uniqueNewRows = newRows.filter(newRow => {
         const isDuplicate = prev.some(existing => 
@@ -261,21 +227,15 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
         );
         return !isDuplicate;
       });
-      
-      if (uniqueNewRows.length === 0 && newRows.length > 0) {
-         alert("Variants added! (Duplicates were skipped)");
-      }
       return [...prev, ...uniqueNewRows];
     });
   };
 
-  // --- FINAL SAVE (UPSERT) ---
   const handleFinalSave = async () => {
     if (generatedVariants.length === 0) return alert("Please generate variants first!");
     setLoading(true);
     
     try {
-      // A. Upload Images
       const finalImageUrls = await Promise.all(
         images.map(async (img) => {
            if (img.file) {
@@ -290,49 +250,28 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
         })
       );
 
-      // B. Upsert Parent Product
-      const payload = {
+      const productPayload = {
+        id: initialData?.id,
         name: productData.name,
         slug: productData.slug + (initialData ? '' : `-${Math.floor(Math.random() * 1000)}`),
         brand: productData.brand,
-        category: productData.category,
+        category: productData.category.toLowerCase(), // Normalize
         description: productData.description,
         base_price: Number(productData.basePrice),
         base_images: finalImageUrls,
         is_active: true
       };
 
-      let productId = initialData?.id;
-
-      if (initialData) {
-        // Update
-        const { error } = await supabase.from('products').update(payload).eq('id', initialData.id);
-        if (error) throw error;
-      } else {
-        // Insert
-        const { data, error } = await supabase.from('products').insert(payload).select().single();
-        if (error) throw error;
-        productId = data.id;
-      }
-
-      // C. Sync Variants (Delete Old -> Insert New)
-      // This ensures the DB matches exactly what is on screen
-      if (initialData) {
-        await supabase.from('product_variants').delete().eq('product_id', productId);
-      }
-
-      const variantPayloads = generatedVariants.map(v => ({
-        product_id: productId,
+      const variantsPayload = generatedVariants.map(v => ({
         condition: v.condition,
         specs: v.specs,
         price: v.price,
         stock: v.stock
       }));
 
-      const { error: varError } = await supabase.from('product_variants').insert(variantPayloads);
-      if (varError) throw varError;
+      await upsertProduct(productPayload, variantsPayload);
 
-      alert(initialData ? "Product Updated Successfully!" : "Product Published Successfully!");
+      alert(initialData ? "Product Updated!" : "Product Published!");
       onClose();
 
     } catch (e: any) {
@@ -343,7 +282,6 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
     }
   };
 
-  // Helper groupings
   const groupedOptions = availableOptions.reduce((acc, opt) => {
     if (!acc[opt.key]) acc[opt.key] = [];
     acc[opt.key].push(opt);
@@ -351,8 +289,6 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
   }, {} as Record<string, AttributeOption[]>);
 
   const totalSelected = Object.values(selectedAttributes).flat().length;
-  
-  // Styles
   const inputBaseClass = "w-full bg-white text-slate-900 border-2 border-slate-200 rounded-xl font-bold px-4 py-3.5 outline-none transition-all placeholder:text-slate-400 placeholder:font-medium focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 hover:border-slate-300";
 
   return (
@@ -378,7 +314,6 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
       <div className="flex-1 overflow-y-auto p-4 lg:p-8">
         <div className="max-w-7xl mx-auto">
           
-          {/* STEP 1: GENERAL */}
           {step === 1 && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               {/* IMAGES */}
@@ -413,16 +348,42 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-6">
                   <div className="w-full">
                     <label className="input-label">Product Title</label>
-                    <input className={`${inputBaseClass} ${errors.name ? 'border-red-300' : ''}`} value={productData.name} onChange={e => setProductData({...productData, name: e.target.value})} placeholder="e.g. HP EliteBook" />
+                    <input className={`${inputBaseClass} ${errors.name ? 'border-red-300' : ''}`} value={productData.name} onChange={e => setProductData({...productData, name: e.target.value})} placeholder="e.g. Leather Sofa / iPhone 13" />
                   </div>
                   <div className="grid grid-cols-2 gap-6 w-full">
                     <div className="w-full">
                       <label className="input-label">Category</label>
-                      <div className="relative group w-full"><select className={`${inputBaseClass} appearance-none`} value={productData.category} onChange={e => setProductData({...productData, category: e.target.value as Category})}>{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select><ChevronRight className="absolute right-4 top-3.5 rotate-90 text-slate-400 pointer-events-none" size={16}/></div>
+                      <div className="relative group w-full">
+                        {existingCategories.length > 0 && !isNewCategory ? (
+                            <>
+                                <select className={`${inputBaseClass} appearance-none capitalize`} value={productData.category} onChange={e => {
+                                    if(e.target.value === 'new') { setIsNewCategory(true); setProductData({...productData, category: ''}); }
+                                    else setProductData({...productData, category: e.target.value})
+                                }}>
+                                    {existingCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                                    <option value="new">+ Create New Category</option>
+                                </select>
+                                <ChevronRight className="absolute right-4 top-3.5 rotate-90 text-slate-400 pointer-events-none" size={16}/>
+                            </>
+                        ) : (
+                            <div className="relative">
+                                <input 
+                                    className={`${inputBaseClass} pr-10`} 
+                                    value={productData.category} 
+                                    onChange={e => setProductData({...productData, category: e.target.value})} 
+                                    placeholder="Type new category..."
+                                    autoFocus
+                                />
+                                {existingCategories.length > 0 && (
+                                    <button onClick={() => setIsNewCategory(false)} className="absolute right-2 top-2 p-1.5 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded">Cancel</button>
+                                )}
+                            </div>
+                        )}
+                      </div>
                     </div>
                     <div className="w-full">
                       <label className="input-label">Brand</label>
-                      <input className={inputBaseClass} value={productData.brand} onChange={e => setProductData({...productData, brand: e.target.value})} placeholder="e.g. HP" />
+                      <input className={inputBaseClass} value={productData.brand} onChange={e => setProductData({...productData, brand: e.target.value})} placeholder="e.g. Nike / Sony" />
                     </div>
                   </div>
                   <div className="w-full">
@@ -449,7 +410,6 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
             </div>
           )}
 
-          {/* STEP 2: BULK MATRIX */}
           {step === 2 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
               {/* Product Summary */}
@@ -472,7 +432,7 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
                         <p className="text-sm text-slate-500 font-medium">Select multiple options to auto-generate all combinations.</p>
                     </div>
                     <button onClick={generateMatrix} disabled={totalSelected === 0} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 disabled:opacity-50 shadow-lg hover:bg-blue-700 transition-all">
-                        <Layers size={18}/> Generate {totalSelected > 0 ? 'Variants' : 'Matrix'}
+                         <Tag size={18}/> Generate {totalSelected > 0 ? 'Variants' : 'Matrix'}
                     </button>
                  </div>
                  
@@ -485,13 +445,18 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
                                 const isSelected = selectedAttributes[key]?.includes(opt.value);
                                 return (
                                     <button key={opt.id} onClick={() => toggleAttribute(key, opt.value)} className={`px-3 py-1.5 text-xs font-bold rounded-lg border-2 transition ${isSelected ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-400'}`}>
-                                        {opt.value}
+                                         {opt.value}
                                     </button>
                                 );
                              })}
                           </div>
                        </div>
                     ))}
+                    {Object.keys(groupedOptions).length === 0 && (
+                        <div className="col-span-3 text-center py-10 text-slate-400 italic">
+                            No attributes found for this category. <br/>Add attributes in the Settings page or create custom variants below.
+                        </div>
+                    )}
                  </div>
               </div>
 
@@ -517,7 +482,7 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
                           ))}
                        </tbody>
                     </table>
-                 </div>
+                  </div>
               </div>
 
               <div className="flex justify-end pt-6 border-t border-slate-200">
