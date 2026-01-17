@@ -1,204 +1,310 @@
 "use client";
 
-import React, { useEffect, useState, useTransition } from 'react'; // Added useTransition
+import React, { useEffect, useState, useMemo, useTransition } from 'react';
 import { supabase } from '@/lib/supabase';
-import { updateOrderStatus } from '@/app/admin/actions'; // Import the Server Action
+import { updateOrderStatus } from '@/app/admin/actions'; 
 import { formatCurrency } from '@/lib/utils';
-import { Order } from '@/lib/types';
+import { Database } from '@/lib/database.types';
 import { 
-  ShoppingBag, 
-  Loader2, 
-  CheckCircle, 
-  Clock, 
-  Truck, 
-  Copy, 
-  Check, 
-  MapPin,
-  AlertCircle 
+  ShoppingBag, Loader2, CheckCircle, Clock, Truck, 
+  Copy, MapPin, Search, ChevronDown, ChevronRight, 
+  FileText, Calendar, Filter
 } from 'lucide-react';
-import { toast } from 'sonner'; // Optional: If you have a toast library, else use alert/console
+import { toast } from 'sonner';
+import { ReceiptGenerator } from '@/components/admin/ReceiptGenerator';
 
-export default function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>([]);
+// Types
+type OrderWithItems = Database['public']['Tables']['orders']['Row'] & {
+  items: Database['public']['Tables']['order_items']['Row'][];
+};
+
+
+export default function AdminOrdersPage() {
+  const [orders, setOrders] = useState<OrderWithItems[]>([]);
   const [loading, setLoading] = useState(true);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedDates, setExpandedDates] = useState<string[]>([]); // Track open accordions
+  const [selectedReceiptOrder, setSelectedReceiptOrder] = useState<OrderWithItems | null>(null);
+  const [settings, setSettings] = useState<Record<string, string>>({});
   
-  // New Hook for Server Actions
   const [isPending, startTransition] = useTransition();
 
+  // 1. FETCH DATA
   useEffect(() => {
-    fetchOrders();
+    const fetchData = async () => {
+      // Fetch Orders
+      const { data: ordersData } = await supabase
+        .from('orders')
+        .select('*, items:order_items(*)')
+        .order('created_at', { ascending: false });
+
+     // Fetch Settings
+    const { data: settingsData } = await supabase.from('site_settings').select('*');
     
-    // REAL-TIME BONUS: Listen for new orders instantly!
-    const channel = supabase
-      .channel('realtime-orders')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
-        // Simple strategy: Just refetch when anything changes
-        fetchOrders();
-      })
+    // Type-Safe Reduce
+    const settingsMap = (settingsData || []).reduce((acc, curr) => {
+       // Ensure we don't crash if a key/value is missing (DB safety)
+       if (curr.key && curr.value) {
+           acc[curr.key] = curr.value;
+       }
+       return acc;
+    }, {} as Record<string, string>);
+
+    if (ordersData) {
+       // ✅ SAFE CASTING: We tell TS explicitly this matches our joined type
+       const typedOrders = ordersData as unknown as OrderWithItems[];
+       setOrders(typedOrders);
+
+       // ✅ SAFE DATE CHECK: Auto-expand the most recent date
+       if (typedOrders.length > 0) {
+          const firstOrder = typedOrders[0];
+          // Check if created_at exists before trying to format it
+          if (firstOrder.created_at) {
+             const firstDate = new Date(firstOrder.created_at).toDateString();
+             setExpandedDates([firstDate]);
+          }
+       }
+    
+      }
+      setSettings(settingsMap);
+      setLoading(false);
+    };
+
+    fetchData();
+
+    // Realtime Listener
+    const channel = supabase.channel('realtime-orders')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchData())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  const fetchOrders = async () => {
-    const { data } = await supabase
-      .from('orders')
-      .select('*, items:order_items(*)')
-      .order('created_at', { ascending: false });
-      
-    if (data) setOrders(data as Order[]);
-    setLoading(false);
+  // 2. SEARCH & FILTER LOGIC
+  const filteredOrders = useMemo(() => {
+    if (!searchQuery) return orders;
+    const lowerQ = searchQuery.toLowerCase();
+    return orders.filter(o => 
+      o.id.toLowerCase().includes(lowerQ) ||
+      o.customer_name?.toLowerCase().includes(lowerQ) ||
+      o.customer_phone?.includes(searchQuery)
+    );
+  }, [orders, searchQuery]);
+
+  // 3. GROUP BY DATE (The "Logistics" View)
+  const groupedOrders = useMemo(() => {
+    const groups: Record<string, OrderWithItems[]> = {};
+    filteredOrders.forEach(order => {
+      if (!order.created_at) return;
+      const dateKey = new Date(order.created_at).toDateString(); // "Fri Oct 20 2023"
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(order);
+    });
+    return groups;
+  }, [filteredOrders]);
+
+  // Actions
+  const toggleDate = (date: string) => {
+    setExpandedDates(prev => 
+      prev.includes(date) ? prev.filter(d => d !== date) : [...prev, date]
+    );
   };
 
-  // --- NEW: SERVER ACTION HANDLER ---
   const handleStatusChange = (id: string, newStatus: string) => {
-    // 1. Optimistic Update (Immediate UI change)
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus as any } : o));
-
-    // 2. Server Action (The real work)
+    // Optimistic Update
+    setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
+    
     startTransition(async () => {
       try {
         await updateOrderStatus(id, newStatus);
-        // Toast success if you have one
-      } catch (error) {
-        // Revert on failure
-        console.error("Update failed", error);
-        alert("Failed to update status. Check your connection.");
-        fetchOrders(); // Re-sync with server
+        toast.success(`Order status updated to ${newStatus}`);
+      } catch (e) {
+        toast.error("Update failed");
       }
     });
   };
 
-  // ... (handleCopyReceipt logic remains the same) ...
-  const handleCopyReceipt = (order: Order) => {
-     // ... paste your existing function here ...
-     const itemsList = order.items?.map(i => 
-      `- ${i.quantity}x ${i.product_name} ${i.variant_name ? `(${i.variant_name})` : ''}`
-    ).join('\n') || 'No items listed';
-
-    const receipt = `📦 *DISPATCH ORDER* #${order.id.slice(0, 5).toUpperCase()}
-👤 *Customer:* ${order.customer_name}
-📞 *Phone:* ${order.customer_phone}
-📍 *Loc:* ${order.delivery_address}
-${order.delivery_notes ? `📝 *Note:* ${order.delivery_notes}` : ''}
-
-🛒 *Items:*
-${itemsList}
-
-💰 *Collect:* ${formatCurrency(order.total_amount)}`.trim();
-
-    navigator.clipboard.writeText(receipt);
-    setCopiedId(order.id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleCopyRiderInfo = (order: OrderWithItems) => {
+    const itemsList = order.items?.map(i => `- ${i.quantity}x ${i.product_name}`).join('\n');
+    const txt = `📦 DISPATCH #${order.id.slice(0,5).toUpperCase()}\n👤 ${order.customer_name}\n📞 ${order.customer_phone}\n📍 ${order.delivery_address}\n\n🛒 ITEMS:\n${itemsList}\n\n💰 COLLECT: ${formatCurrency(order.total_amount)}`;
+    navigator.clipboard.writeText(txt);
+    toast.success("Rider details copied!");
   };
 
-  const getStatusBadge = (status: string) => {
-    // ... (same as before) ...
-    switch(status) {
-      case 'completed': return <span className="bg-green-100 text-green-700 px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit"><CheckCircle size={12}/> Done</span>;
-      case 'shipped': return <span className="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit"><Truck size={12}/> Rider</span>;
-      case 'cancelled': return <span className="bg-red-100 text-red-700 px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit">Cancelled</span>;
-      default: return <span className="bg-yellow-100 text-yellow-700 px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit"><Clock size={12}/> New</span>;
-    }
-  };
-
-  if (loading) return <div className="min-h-[60vh] flex items-center justify-center"><Loader2 className="animate-spin text-slate-300 w-8 h-8"/></div>;
+  if (loading) return <div className="h-[80vh] flex items-center justify-center"><Loader2 className="animate-spin text-slate-300 w-10 h-10"/></div>;
 
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-8">
-      {/* HEADER */}
-      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-         <div>
-            <h1 className="text-3xl font-black text-slate-900 flex items-center gap-2">
-               <ShoppingBag className="text-orange-600" /> Dispatch Center
-               {isPending && <Loader2 className="animate-spin text-slate-300 ml-2" size={20}/>}
-            </h1>
-            <p className="text-slate-500 font-medium mt-1">Manage orders and dispatch riders.</p>
-         </div>
-         {/* ... Stats box ... */}
+    <div className="max-w-6xl mx-auto pb-20">
+      
+      {/* --- HEADER & SEARCH --- */}
+      <div className="sticky top-0 bg-slate-50/95 backdrop-blur-sm z-10 py-4 border-b border-gray-200 mb-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+           <div>
+              <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
+                 Orders <span className="bg-slate-200 text-slate-600 text-sm px-2 py-1 rounded-full">{orders.length}</span>
+              </h1>
+           </div>
+           
+           <div className="relative w-full md:w-96 group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-orange-500 transition-colors" size={18} />
+              <input 
+                className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl font-bold text-slate-700 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all shadow-sm"
+                placeholder="Search ID, Name or Phone..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+           </div>
+        </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
-         <div className="overflow-x-auto">
-            <table className="w-full text-left whitespace-nowrap">
-                {/* ... Thead ... */}
-                <thead className="bg-slate-50 border-b border-gray-200">
-                  <tr>
-                    <th className="p-4 text-xs font-black text-slate-400 uppercase tracking-wider">Order</th>
-                    <th className="p-4 text-xs font-black text-slate-400 uppercase tracking-wider">Details</th>
-                    <th className="p-4 text-xs font-black text-slate-400 uppercase tracking-wider">Amount</th>
-                    <th className="p-4 text-xs font-black text-slate-400 uppercase tracking-wider">Status</th>
-                    <th className="p-4 text-xs font-black text-slate-400 uppercase tracking-wider text-right">Actions</th>
-                  </tr>
-                </thead>
+      {/* --- DATE GROUPS --- */}
+      <div className="space-y-6">
+        {Object.entries(groupedOrders).map(([date, dateOrders]) => {
+           const isExpanded = expandedDates.includes(date);
+           const totalRevenue = dateOrders.reduce((sum, o) => sum + o.total_amount, 0);
 
-                <tbody className="divide-y divide-gray-100">
-                {orders.map((order) => (
-                    <tr key={order.id} className="hover:bg-slate-50/80 transition-colors group">
-                        {/* ID */}
-                        <td className="p-4 align-top">
-                            <div className="font-mono text-xs font-bold text-slate-500 mb-1">#{order.id.slice(0, 8)}</div>
-                            <div className="text-xs text-slate-400 font-medium">
-                                {new Date(order.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'})}
-                            </div>
-                        </td>
-                        
-                        {/* Customer */}
-                        <td className="p-4 align-top">
-                            <div className="font-bold text-slate-900 mb-0.5">{order.customer_name}</div>
-                            <div className="flex items-center gap-1 text-xs text-slate-500 mb-1">
-                                <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-mono">{order.customer_phone}</span>
-                            </div>
-                            <div className="flex items-start gap-1 text-xs text-slate-400 max-w-[200px] truncate">
-                                <MapPin size={12} className="mt-0.5 shrink-0"/> {order.delivery_address}
-                            </div>
-                        </td>
+           return (
+             <div key={date} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm transition-all">
+                
+                {/* Date Header (Clickable) */}
+                <button 
+                  onClick={() => toggleDate(date)}
+                  className="w-full flex items-center justify-between p-4 bg-slate-50/50 hover:bg-slate-100 transition-colors text-left"
+                >
+                   <div className="flex items-center gap-3">
+                      <div className={`p-1.5 rounded-lg transition-transform ${isExpanded ? 'rotate-90 bg-slate-200' : 'bg-white border border-gray-200'}`}>
+                         <ChevronRight size={16} className="text-slate-500"/>
+                      </div>
+                      <div>
+                         <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                            <Calendar size={16} className="text-orange-500"/> {date}
+                         </h3>
+                         <p className="text-xs text-slate-500 font-medium">{dateOrders.length} Orders</p>
+                      </div>
+                   </div>
+                   <div className="text-right">
+                      <span className="text-sm font-black text-slate-900">{formatCurrency(totalRevenue)}</span>
+                   </div>
+                </button>
 
-                        {/* Amount */}
-                        <td className="p-4 align-top font-black text-slate-900">
-                            {formatCurrency(order.total_amount)}
-                            <div className="text-[10px] font-medium text-slate-400 uppercase mt-1">{order.items?.length || 0} Items</div>
-                        </td>
+                {/* Orders Table */}
+                {isExpanded && (
+                   <div className="overflow-x-auto border-t border-gray-100">
+                      <table className="w-full text-left text-sm whitespace-nowrap">
+                         <thead className="bg-gray-50 text-xs text-gray-400 font-bold uppercase tracking-wider">
+                            <tr>
+                               <th className="px-6 py-3">ID</th>
+                               <th className="px-6 py-3">Customer</th>
+                               <th className="px-6 py-3">Items</th>
+                               <th className="px-6 py-3">Status</th>
+                               <th className="px-6 py-3 text-right">Actions</th>
+                            </tr>
+                         </thead>
+                         <tbody className="divide-y divide-gray-50">
+                            {dateOrders.map(order => (
+                               <tr key={order.id} className="hover:bg-blue-50/30 transition-colors group">
+                                  
+                                  {/* ID */}
+                                  <td className="px-6 py-4">
+                                     <span className="font-mono font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">#{order.id.slice(0,5).toUpperCase()}</span>
+                                  </td>
 
-                        {/* Status (WIRED UP) */}
-                        <td className="p-4 align-top">
-                            <div className="flex flex-col gap-2">
-                                {getStatusBadge(order.status)}
-                                <select 
-                                    value={order.status} 
-                                    disabled={isPending}
-                                    onChange={(e) => handleStatusChange(order.id, e.target.value)}
-                                    className="bg-white border border-gray-200 text-[10px] font-bold rounded-lg p-1.5 outline-none focus:border-orange-500 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity disabled:cursor-not-allowed"
-                                >
-                                    <option value="pending">Pending</option>
-                                    <option value="shipped">On Route</option>
-                                    <option value="completed">Delivered</option>
-                                    <option value="cancelled">Cancelled</option>
-                                </select>
-                            </div>
-                        </td>
+                                  {/* Customer */}
+                                  <td className="px-6 py-4">
+                                     <p className="font-bold text-slate-900">{order.customer_name}</p>
+                                     <p className="text-xs text-slate-400 font-mono">{order.customer_phone}</p>
+                                     <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-1 max-w-[150px] truncate">
+                                        <MapPin size={10} /> {order.delivery_address}
+                                     </div>
+                                  </td>
 
-                        {/* Actions */}
-                        <td className="p-4 align-top text-right">
-                            <button 
-                                onClick={() => handleCopyReceipt(order)}
-                                className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                                    copiedId === order.id 
-                                    ? 'bg-green-50 border-green-200 text-green-700' 
-                                    : 'bg-white border-gray-200 text-slate-600 hover:border-orange-200 hover:text-orange-600 hover:shadow-sm'
-                                }`}
-                            >
-                                {copiedId === order.id ? <Check size={14}/> : <Copy size={14}/>}
-                                {copiedId === order.id ? 'Copied!' : 'Rider Info'}
-                            </button>
-                        </td>
-                    </tr>
-                ))}
-                </tbody>
-            </table>
-         </div>
+                                  {/* Items Summary */}
+                                  <td className="px-6 py-4">
+                                     <div className="flex flex-col gap-1">
+                                        {order.items.slice(0, 2).map((item, i) => (
+                                           <span key={i} className="text-xs font-medium text-slate-600">
+                                              {item.quantity}x {item.product_name}
+                                           </span>
+                                        ))}
+                                        {order.items.length > 2 && <span className="text-[10px] text-gray-400">+{order.items.length - 2} more...</span>}
+                                     </div>
+                                  </td>
+
+                                  {/* Status Dropdown */}
+                                  <td className="px-6 py-4">
+                                     <div className="relative w-fit">
+                                        <select 
+                                           value={order.status || 'pending'}
+                                           onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                                           className={`appearance-none pl-8 pr-8 py-1.5 rounded-full text-xs font-bold outline-none cursor-pointer transition-all border ${
+                                              order.status === 'completed' ? 'bg-green-50 text-green-700 border-green-200' :
+                                              order.status === 'shipped' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                              order.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' :
+                                              'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                           }`}
+                                        >
+                                           <option value="pending">Pending</option>
+                                           <option value="shipped">Dispatched</option>
+                                           <option value="completed">Delivered</option>
+                                           <option value="cancelled">Cancelled</option>
+                                        </select>
+                                        {/* Status Icons */}
+                                        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                                           {order.status === 'completed' ? <CheckCircle size={12} className="text-green-600"/> :
+                                            order.status === 'shipped' ? <Truck size={12} className="text-blue-600"/> :
+                                            <Clock size={12} className="text-yellow-600"/>}
+                                        </div>
+                                        <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none"/>
+                                     </div>
+                                  </td>
+
+                                  {/* Action Buttons */}
+                                  <td className="px-6 py-4 text-right">
+                                     <div className="flex justify-end gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button 
+                                           onClick={() => handleCopyRiderInfo(order)}
+                                           className="p-2 bg-white border border-gray-200 text-slate-500 rounded-lg hover:text-orange-600 hover:border-orange-200 transition-colors"
+                                           title="Copy Rider Info"
+                                        >
+                                           <Copy size={16} />
+                                        </button>
+                                        <button 
+                                           onClick={() => setSelectedReceiptOrder(order)}
+                                           className="p-2 bg-blue-50 border border-blue-100 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                                           title="Generate Receipt"
+                                        >
+                                           <FileText size={16} />
+                                        </button>
+                                     </div>
+                                  </td>
+                               </tr>
+                            ))}
+                         </tbody>
+                      </table>
+                   </div>
+                )}
+             </div>
+           );
+        })}
+
+        {Object.keys(groupedOrders).length === 0 && (
+           <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
+              <Filter className="w-12 h-12 text-gray-300 mx-auto mb-4"/>
+              <h3 className="text-lg font-bold text-gray-500">No orders found</h3>
+              <p className="text-gray-400">Try changing your search terms.</p>
+           </div>
+        )}
       </div>
+
+      {/* --- RECEIPT MODAL --- */}
+      {selectedReceiptOrder && (
+         <ReceiptGenerator 
+            order={selectedReceiptOrder} 
+            settings={settings} 
+            onClose={() => setSelectedReceiptOrder(null)} 
+         />
+      )}
+
     </div>
   );
 }

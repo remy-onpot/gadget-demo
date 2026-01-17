@@ -1,18 +1,26 @@
 import { unstable_cache } from 'next/cache';
 
-// This new signature accepts any function arguments (A) and return type (T)
-export function cacheService<T, A extends any[]>(
-  fetcher: (...args: A) => Promise<T>,
+// 1. Strict Callback Type
+type CacheCallback<T, A extends unknown[]> = (...args: A) => Promise<T>;
+
+// 2. Strict Options Type
+type CacheOptions = { 
+  tags?: string[]; 
+  revalidate?: number | false; 
+} | string[];
+
+export function cacheService<T, A extends unknown[]>(
+  fetcher: CacheCallback<T, A>,
   keyParts: string[],
-  options: { tags?: string[]; revalidate?: number } | string[]
-) {
-  // 1. Normalize Options
-  // Support both styles: cacheService(fn, key, ['tag']) AND cacheService(fn, key, { tags: [], revalidate: 60 })
+  options: CacheOptions
+): CacheCallback<T, A> {
+  
+  // 3. Normalize Options
   const finalOptions = Array.isArray(options) 
     ? { tags: options, revalidate: 3600 } 
     : options;
 
-  // 2. Return the cached version preserving the original arguments
+  // 4. Return cached function
   return unstable_cache(
     fetcher,
     keyParts,

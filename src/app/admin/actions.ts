@@ -208,3 +208,8 @@ export async function deleteCategorySection(id: string) {
   revalidatePath('/category/[slug]', 'page');
   return { success: true };
 }
+
+
+// ==========================================
+// 8.
+// ==========================================

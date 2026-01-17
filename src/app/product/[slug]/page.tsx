@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { Product, Variant } from '@/lib/types';
+import { Product, Variant } from '@/lib/types'; // Using your central types
+import { Database } from '@/lib/database.types'; // ✅ Import DB types for raw rows
 import { useProductLogic } from '@/hooks/useProductLogic';
 import { ProductGallery } from '@/components/product/ProductGallery';
 import { ProductConfigurator } from '@/components/product/ProductConfigurator';
@@ -11,6 +12,16 @@ import { Loader2, ArrowLeft, PackagePlus, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { ProductCard } from '@/components/ProductCard'; 
 import { ProductCardSkeleton } from '@/components/skeletons/ProductCardSkeleton';
+
+// 1. Define the specific shape of the "Related Items" query
+// It joins 'products' with 'product_variants' to get the price
+type ProductRow = Database['public']['Tables']['products']['Row'];
+interface RawRelatedItem extends Omit<ProductRow, 'variants'> {
+  images: string[] | null;       
+  variants: { price: number }[]; // The partial data we fetched
+  specs: any;                    // Explicitly allow specs access
+  compare_at_price?: number | null;
+}
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -38,7 +49,8 @@ export default function ProductDetailPage() {
         return; 
       }
 
-      setProduct(parentData as Product);
+      // Safe cast to your App's Product type
+      setProduct(parentData as unknown as Product);
 
       // B. Get Variants
       const { data: variantData } = await supabase
@@ -46,34 +58,52 @@ export default function ProductDetailPage() {
         .select('*')
         .eq('product_id', parentData.id);
 
-      if (variantData) setVariants(variantData as any);
+      // ✅ FIX 1: Safe Cast instead of 'any'
+      if (variantData) {
+          setVariants(variantData as unknown as Variant[]);
+      }
 
-      // C. Get "Smart" Related Items (FIXED IMAGE & PRICE BUG)
-      const { data: relatedRaw } = await supabase
+      // C. Get "Smart" Related Items
+     const { data: relatedRaw } = await supabase
         .from('products')
         .select(`
             *, 
-            images:base_images,          // <--- Fixes Image Break
-            variants:product_variants(price) // <--- Fixes Price showing 0
+            images:base_images,          
+            variants:product_variants(price) 
         `)
         .eq('category', parentData.category)
         .neq('id', parentData.id)
         .limit(4);
         
       if (relatedRaw) {
-        // Normalize related items so ProductCard can read them
-        const cleanRelated = relatedRaw.map((p: any) => {
-            const prices = p.variants?.map((v: any) => v.price) || [];
+        // Safe Cast
+        const rawItems = relatedRaw as unknown as RawRelatedItem[];
+
+        const cleanRelated = rawItems.map((p) => {
+            // Calculate min price from the partial variants
+            const prices = p.variants?.map((v) => v.price) || [];
             const minPrice = prices.length > 0 ? Math.min(...prices) : (p.base_price || 0);
+            
+            // 
+            
             return {
-                ...p,
-                price: minPrice,
-                images: p.images || []
-            };
+                id: p.id,
+                name: p.name,
+                slug: p.slug,
+                brand: p.brand || 'Generic',
+                category: p.category,
+                description: p.description,
+                price: minPrice, 
+                originalPrice: p.compare_at_price, // Ensure this maps correctly if it exists
+                images: p.images || [],
+                specs: p.specs || {},
+                variants: [], // 
+                isActive: p.is_active,
+                isFeatured: p.is_featured
+            } as Product;
         });
         setRelatedItems(cleanRelated);
       }
-
       setLoading(false);
     };
 
@@ -88,28 +118,23 @@ export default function ProductDetailPage() {
     ? logic.currentVariant.images
     : product?.images || [];
 
-if (loading) {
-  return (
-    <div className="min-h-screen bg-[#FAFAFA] font-sans pb-20">
-      {/* 1. Mock Header Skeleton */}
-      <div className="bg-white border-b border-gray-200 h-16 sticky top-0 z-30" />
-      
-      {/* 2. Mock Content Grid */}
-      <div className="container mx-auto px-4 py-8 animate-pulse">
-        {/* Title Placeholder */}
-        <div className="h-8 w-48 bg-gray-200 rounded-lg mb-8" />
-        
-        {/* The Grid of Ghosts */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-           {/* Render 8 skeletons to fill the screen */}
-           {Array.from({ length: 8 }).map((_, i) => (
-             <ProductCardSkeleton key={i} />
-           ))}
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#FAFAFA] font-sans pb-20">
+        <div className="bg-white border-b border-gray-200 h-16 sticky top-0 z-30" />
+        <div className="container mx-auto px-4 py-8 animate-pulse">
+          <div className="h-8 w-48 bg-gray-200 rounded-lg mb-8" />
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+             {Array.from({ length: 8 }).map((_, i) => (
+               <ProductCardSkeleton key={i} />
+             ))}
+          </div>
         </div>
       </div>
-    </div>
-  );
-}  if (!product) return <div className="h-screen flex items-center justify-center text-slate-500">Product not found</div>;
+    );
+  }  
+  
+  if (!product) return <div className="h-screen flex items-center justify-center text-slate-500">Product not found</div>;
 
   return (
     <div className="min-h-screen bg-white pb-20">
@@ -164,7 +189,7 @@ if (loading) {
               <div className="mt-12 prose prose-slate prose-sm max-w-none">
                  <h3 className="text-lg font-bold text-slate-900 not-prose mb-4">Product Overview</h3>
                  <div className="text-slate-600 leading-relaxed whitespace-pre-line">
-                    {product.description || "No description available for this item."}
+                   {product.description || "No description available for this item."}
                  </div>
               </div>
 
@@ -185,7 +210,7 @@ if (loading) {
         </div>
       </div>
 
-      {/* FOOTER: UPSELL ENGINE (Re-using ProductCard) */}
+      {/* FOOTER: UPSELL ENGINE */}
       {relatedItems.length > 0 && (
           <section className="bg-slate-50 py-16 mt-16 border-t border-gray-200">
              <div className="container mx-auto px-4 max-w-[1400px]">

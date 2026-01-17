@@ -7,8 +7,10 @@ import { saveCategorySection, deleteCategorySection } from '@/app/admin/actions'
 import { Plus, Trash2, Save, Layout, Filter, Settings2, ChevronRight, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+// ✅ FIX 1: Define strict constant. TypeScript now knows this array is specific.
+const SECTION_TYPES = ['product_row', 'brand_row'] as const;
+
 export const CategoryLayoutManager = () => {
-  // WHITE-LABEL: No hardcoded categories. Start empty.
   const [categories, setCategories] = useState<string[]>([]);
   const [activeCategory, setActiveCategory] = useState('');
   
@@ -26,16 +28,16 @@ export const CategoryLayoutManager = () => {
 
   const [isPending, startTransition] = useTransition();
 
-  // 1. FETCH CATEGORIES (White-Label)
+  // 1. FETCH CATEGORIES
   useEffect(() => {
     const fetchCats = async () => {
-        const { data } = await supabase.from('products').select('category');
-        if (data && data.length > 0) {
-            const unique = Array.from(new Set(data.map(p => p.category.toLowerCase()))).filter(Boolean);
-            const sorted = unique.sort();
-            setCategories(sorted);
-            if (sorted.length > 0) setActiveCategory(sorted[0]);
-        }
+       const { data } = await supabase.from('products').select('category');
+       if (data && data.length > 0) {
+           const unique = Array.from(new Set(data.map(p => p.category.toLowerCase()))).filter(Boolean);
+           const sorted = unique.sort();
+           setCategories(sorted);
+           if (sorted.length > 0) setActiveCategory(sorted[0]);
+       }
     };
     fetchCats();
   }, []);
@@ -45,21 +47,22 @@ export const CategoryLayoutManager = () => {
     if (!activeCategory) return;
     
     const fetchSections = async () => {
-        setLoading(true);
-        const { data } = await supabase
-        .from('category_sections')
-        .select('*')
-        .eq('category_slug', activeCategory)
-        .order('sort_order', { ascending: true });
-        
-        if (data) {
-            const parsedData = data.map(d => ({
-                ...d,
-                filter_rules: d.filter_rules as unknown as FilterRule[]
-            }));
-            setSections(parsedData as CategorySection[]);
-        }
-        setLoading(false);
+       setLoading(true);
+       const { data } = await supabase
+         .from('category_sections')
+         .select('*')
+         .eq('category_slug', activeCategory)
+         .order('sort_order', { ascending: true });
+       
+       if (data) {
+           // Safe double-casting for JSONB columns coming from DB
+           const parsedData = data.map(d => ({
+               ...d,
+               filter_rules: d.filter_rules as unknown as FilterRule[]
+           }));
+           setSections(parsedData as CategorySection[]);
+       }
+       setLoading(false);
     };
     fetchSections();
   }, [activeCategory]);
@@ -71,8 +74,9 @@ export const CategoryLayoutManager = () => {
     }));
   };
 
-  const updateRule = (index: number, key: keyof FilterRule, value: any) => {
+  const updateRule = (index: number, key: keyof FilterRule, value: string) => {
     const newRules = [...formState.rules];
+    // Ensure we maintain the object shape
     newRules[index] = { ...newRules[index], [key]: value };
     setFormState({ ...formState, rules: newRules });
   };
@@ -92,7 +96,8 @@ export const CategoryLayoutManager = () => {
       category_slug: activeCategory,
       title: formState.title,
       section_type: formState.type,
-      filter_rules: formState.rules as any, 
+      
+      filter_rules: formState.rules as unknown as any,   
       sort_order: sections.length + 1,
       is_active: true
     };
@@ -105,7 +110,7 @@ export const CategoryLayoutManager = () => {
             setEditingId(null);
             setFormState({ title: '', type: 'product_row', rules: [] });
             
-            // Re-fetch manually
+            // Re-fetch manually to sync ID
             const { data } = await supabase
                 .from('category_sections')
                 .select('*')
@@ -117,8 +122,10 @@ export const CategoryLayoutManager = () => {
                 setSections(parsedData as CategorySection[]);
             }
 
-        } catch (e: any) {
-            toast.error("Failed to save: " + e.message);
+        } catch (e: unknown) {
+            // ✅ FIX 3: Safe error handling
+            const msg = e instanceof Error ? e.message : "An unknown error occurred";
+            toast.error("Failed to save: " + msg);
         }
     });
   };
@@ -131,8 +138,9 @@ export const CategoryLayoutManager = () => {
             await deleteCategorySection(id);
             toast.success("Section deleted");
             setSections(prev => prev.filter(s => s.id !== id));
-        } catch (e: any) {
-            toast.error("Failed to delete: " + e.message);
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : "An unknown error occurred";
+            toast.error("Failed to delete: " + msg);
         }
     });
   };
@@ -164,7 +172,7 @@ export const CategoryLayoutManager = () => {
 
   return (
     <div className="space-y-8 pb-20">
-      {/* 1. CATEGORY TABS (DYNAMIC) */}
+      {/* 1. CATEGORY TABS */}
       <div className="flex flex-wrap gap-2 p-1.5 bg-white border border-gray-200 rounded-2xl w-fit shadow-sm">
         {categories.map(cat => (
           <button
@@ -278,10 +286,11 @@ export const CategoryLayoutManager = () => {
                     <div>
                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Content Type</label>
                        <div className="grid grid-cols-2 gap-3">
-                          {['product_row', 'brand_row'].map((type) => (
+                          {/* ✅ FIX 4: Use the strict constant map */}
+                          {SECTION_TYPES.map((type) => (
                              <button 
                                key={type}
-                               onClick={() => setFormState({...formState, type: type as any})}
+                               onClick={() => setFormState({...formState, type: type})} // ✅ No 'as any' needed
                                className={`py-3 rounded-xl border text-sm font-bold transition-all flex items-center justify-center gap-2 ${
                                   formState.type === type 
                                   ? 'bg-slate-900 text-white border-slate-900 shadow-md' 
@@ -313,12 +322,12 @@ export const CategoryLayoutManager = () => {
                            <div key={idx} className="flex gap-2 items-center animate-in slide-in-from-left-2">
                              <div className="relative w-1/3">
                                <select 
-                                    className="w-full appearance-none bg-white text-xs font-bold p-3 pr-8 rounded-xl border border-gray-200 outline-none focus:border-orange-300"
-                                    value={rule.key || rule.field} 
-                                    onChange={e => {
-                                        updateRule(idx, 'key', e.target.value);
-                                        updateRule(idx, 'field', e.target.value);
-                                    }}
+                                   className="w-full appearance-none bg-white text-xs font-bold p-3 pr-8 rounded-xl border border-gray-200 outline-none focus:border-orange-300"
+                                   value={rule.key || rule.field} 
+                                   onChange={e => {
+                                       updateRule(idx, 'key', e.target.value);
+                                       updateRule(idx, 'field', e.target.value);
+                                   }}
                                >
                                    <option value="price">Price (GHS)</option>
                                    <option value="brand">Brand</option>
@@ -371,12 +380,12 @@ export const CategoryLayoutManager = () => {
              <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
                  <button onClick={() => setIsEditing(false)} className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-gray-200 transition text-sm">Cancel</button>
                  <button 
-                    onClick={handleSave} 
-                    disabled={isPending}
-                    className="bg-[#F97316] text-white px-8 py-3 rounded-xl font-bold hover:bg-orange-600 shadow-lg shadow-orange-200 transition-transform active:scale-95 flex items-center gap-2 text-sm disabled:opacity-70 disabled:cursor-not-allowed"
+                   onClick={handleSave} 
+                   disabled={isPending}
+                   className="bg-[#F97316] text-white px-8 py-3 rounded-xl font-bold hover:bg-orange-600 shadow-lg shadow-orange-200 transition-transform active:scale-95 flex items-center gap-2 text-sm disabled:opacity-70 disabled:cursor-not-allowed"
                  >
-                    {isPending ? <Loader2 className="animate-spin" size={18}/> : <Save size={18} />} 
-                    Save Layout
+                   {isPending ? <Loader2 className="animate-spin" size={18}/> : <Save size={18} />} 
+                   Save Layout
                  </button>
              </div>
            </div>

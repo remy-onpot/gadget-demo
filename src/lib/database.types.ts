@@ -14,6 +14,63 @@ export type Database = {
   }
   public: {
     Tables: {
+      abandoned_checkouts: {
+        Row: {
+          cart_items: Json | null
+          created_at: string | null
+          email: string
+          id: string
+          name: string | null
+          phone: string | null
+          recovered: boolean | null
+          total_value: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          cart_items?: Json | null
+          created_at?: string | null
+          email: string
+          id?: string
+          name?: string | null
+          phone?: string | null
+          recovered?: boolean | null
+          total_value?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          cart_items?: Json | null
+          created_at?: string | null
+          email?: string
+          id?: string
+          name?: string | null
+          phone?: string | null
+          recovered?: boolean | null
+          total_value?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      admin_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string | null
+          role: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id: string
+          name?: string | null
+          role?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string | null
+          role?: string | null
+        }
+        Relationships: []
+      }
       attribute_options: {
         Row: {
           category: string
@@ -77,6 +134,36 @@ export type Database = {
           link_url?: string
           slot?: string
           title?: string
+        }
+        Relationships: []
+      }
+      carts: {
+        Row: {
+          cart_content: Json | null
+          contact_info: Json | null
+          created_at: string | null
+          id: string
+          session_id: string | null
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          cart_content?: Json | null
+          contact_info?: Json | null
+          created_at?: string | null
+          id?: string
+          session_id?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          cart_content?: Json | null
+          contact_info?: Json | null
+          created_at?: string | null
+          id?: string
+          session_id?: string | null
+          status?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -145,36 +232,36 @@ export type Database = {
       }
       content_blocks: {
         Row: {
-          cta_link: string | null
-          cta_text: string | null
-          display_order: number | null
+          block_key: string
+          created_at: string | null
+          description: string | null
+          icon_key: string | null
           id: string
-          image_url: string | null
-          is_active: boolean | null
-          section: string
-          subtitle: string | null
+          meta_info: Json | null
+          section_key: string
+          sort_order: number | null
           title: string | null
         }
         Insert: {
-          cta_link?: string | null
-          cta_text?: string | null
-          display_order?: number | null
+          block_key: string
+          created_at?: string | null
+          description?: string | null
+          icon_key?: string | null
           id?: string
-          image_url?: string | null
-          is_active?: boolean | null
-          section: string
-          subtitle?: string | null
+          meta_info?: Json | null
+          section_key: string
+          sort_order?: number | null
           title?: string | null
         }
         Update: {
-          cta_link?: string | null
-          cta_text?: string | null
-          display_order?: number | null
+          block_key?: string
+          created_at?: string | null
+          description?: string | null
+          icon_key?: string | null
           id?: string
-          image_url?: string | null
-          is_active?: boolean | null
-          section?: string
-          subtitle?: string | null
+          meta_info?: Json | null
+          section_key?: string
+          sort_order?: number | null
           title?: string | null
         }
         Relationships: []

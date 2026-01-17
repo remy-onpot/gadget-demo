@@ -23,7 +23,7 @@ export default async function HomePage() {
   const { settings, categories } = await getGlobalData();
 
   // 2. FETCH PAGE SPECIFIC DATA
-  const [bannersRes, productsRes] = await Promise.all([
+  const [bannersRes, productsRes, blocksRes] = await Promise.all([
     supabase.from('banners').select('*').eq('is_active', true),
     
     supabase.from('products')
@@ -31,11 +31,15 @@ export default async function HomePage() {
       .eq('is_active', true)
       .eq('isFeatured', true) 
       .order('created_at', { ascending: false })
-      .limit(4)
+      .limit(4),
+
+    // Grid content blocks for SocialGrid
+    supabase.from('content_blocks').select('*').eq('section_key', 'home_grid')
   ]);
 
   const banners = (bannersRes.data || []) as Banner[];
   const featuredProducts = (productsRes.data || []) as Product[];
+  const blocks = blocksRes.data || [];
 
   // Banner Filters
   const brandBanners = banners.filter(b => b.slot === 'brand_hero');
@@ -58,7 +62,7 @@ export default async function HomePage() {
            <CategoryFeed />
          </div>
 
-         <SocialGrid settings={settings} />
+         <SocialGrid settings={settings} blocks={blocks} />
          <BranchSlider banners={branchBanners} settings={settings} />
 
          {/* Dynamic CTA */}

@@ -4,6 +4,12 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Save, Loader2, Globe, Phone, MapPin, MessageCircle, Facebook, Instagram, Linkedin, Twitter } from 'lucide-react';
 import { ProductCardSkeleton } from '@/components/skeletons/ProductCardSkeleton';
+import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/utils';
+import { Database } from '@/lib/database.types';
+
+// 1. DEFINE ROW TYPE
+type SettingRow = Database['public']['Tables']['site_settings']['Row'];
 
 export const SettingsManager = () => {
   const [loading, setLoading] = useState(true);
@@ -25,11 +31,14 @@ export const SettingsManager = () => {
 
   const fetchSettings = async () => {
     const { data } = await supabase.from('site_settings').select('*');
+    
     if (data) {
-      // Convert array to object: { key: value }
+      // ✅ TYPE SAFE: We know 'data' is SettingRow[]
+      const rows = data as SettingRow[];
+      
       const initialData: Record<string, string> = {};
-      data.forEach(item => {
-        initialData[item.key] = item.value;
+      rows.forEach(item => {
+        if (item.value) initialData[item.key] = item.value;
       });
       setFormData(initialData);
     }
@@ -48,11 +57,14 @@ export const SettingsManager = () => {
           updated_at: new Date().toISOString()
         }));
 
+      // ✅ TYPE SAFE: Supabase knows this matches the schema
       const { error } = await supabase.from('site_settings').upsert(updates);
+      
       if (error) throw error;
-      alert("Site settings updated successfully!");
-    } catch (e: any) {
-      alert("Error: " + e.message);
+      toast.success("Site settings updated successfully!");
+      
+    } catch (e: unknown) { // ✅ SAFE ERROR HANDLING
+      toast.error("Error: " + getErrorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -62,28 +74,25 @@ export const SettingsManager = () => {
     setFormData(prev => ({ ...prev, [key]: val }));
   };
 
-if (loading) {
-  return (
-    <div className="min-h-screen bg-[#FAFAFA] font-sans pb-20">
-      {/* 1. Mock Header Skeleton */}
-      <div className="bg-white border-b border-gray-200 h-16 sticky top-0 z-30" />
-      
-      {/* 2. Mock Content Grid */}
-      <div className="container mx-auto px-4 py-8 animate-pulse">
-        {/* Title Placeholder */}
-        <div className="h-8 w-48 bg-gray-200 rounded-lg mb-8" />
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#FAFAFA] font-sans pb-20">
+        {/* Mock Header Skeleton */}
+        <div className="bg-white border-b border-gray-200 h-16 sticky top-0 z-30" />
         
-        {/* The Grid of Ghosts */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-           {/* Render 8 skeletons to fill the screen */}
-           {Array.from({ length: 8 }).map((_, i) => (
-             <ProductCardSkeleton key={i} />
-           ))}
+        {/* Mock Content Grid */}
+        <div className="container mx-auto px-4 py-8 animate-pulse">
+          <div className="h-8 w-48 bg-gray-200 rounded-lg mb-8" />
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+             {Array.from({ length: 8 }).map((_, i) => (
+               <ProductCardSkeleton key={i} />
+             ))}
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-20">
       
@@ -136,21 +145,21 @@ if (loading) {
               <div>
                  <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Display Address</label>
                  <textarea 
-                    value={formData['address_display'] || ''}
-                    onChange={e => handleChange('address_display', e.target.value)}
-                    placeholder="Shop 42..."
-                    rows={3}
-                    className="w-full p-3 bg-slate-50 border border-gray-200 rounded-xl font-medium text-slate-900 outline-none focus:bg-white focus:border-orange-500 transition resize-none"
+                   value={formData['address_display'] || ''}
+                   onChange={e => handleChange('address_display', e.target.value)}
+                   placeholder="Shop 42..."
+                   rows={3}
+                   className="w-full p-3 bg-slate-50 border border-gray-200 rounded-xl font-medium text-slate-900 outline-none focus:bg-white focus:border-orange-500 transition resize-none"
                  />
               </div>
 
               <div>
                  <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Google Maps Link</label>
                  <input 
-                    value={formData['map_link'] || ''}
-                    onChange={e => handleChange('map_link', e.target.value)}
-                    placeholder="https://goo.gl/maps/..."
-                    className="w-full p-3 bg-slate-50 border border-gray-200 rounded-xl font-mono text-sm text-blue-600 outline-none focus:bg-white focus:border-orange-500 transition"
+                   value={formData['map_link'] || ''}
+                   onChange={e => handleChange('map_link', e.target.value)}
+                   placeholder="https://goo.gl/maps/..."
+                   className="w-full p-3 bg-slate-50 border border-gray-200 rounded-xl font-mono text-sm text-blue-600 outline-none focus:bg-white focus:border-orange-500 transition"
                  />
               </div>
            </div>
@@ -188,7 +197,7 @@ if (loading) {
       </div>
 
       {/* SAVE BAR */}
-      <div className="sticky bottom-4 bg-slate-900 text-white p-4 rounded-2xl shadow-2xl shadow-slate-900/20 flex justify-between items-center animate-in slide-in-from-bottom-4">
+      <div className="sticky bottom-4 bg-slate-900 text-white p-4 rounded-2xl shadow-2xl shadow-slate-900/20 flex justify-between items-center animate-in slide-in-from-bottom-4 z-40">
          <div className="pl-2">
             <p className="font-bold text-sm">Unsaved changes?</p>
             <p className="text-xs text-slate-400">Click save to publish updates immediately.</p>

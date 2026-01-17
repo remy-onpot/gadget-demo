@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { Product, Banner, Variant } from './types';
-import { supabase } from './supabase';
+import { Product, Banner, Variant } from '@/lib/types'; // Ensure path is correct (@/lib/types)
+import { supabase } from '@/lib/supabase'; // Ensure path is correct (@/lib/supabase)
+import { Database } from '@/lib/database.types';
 
 // 1. DEFINE CART ITEM
 export interface CartItem {
@@ -9,8 +10,11 @@ export interface CartItem {
   product: Product; // Parent info
   variant: Variant; // Specific info
   quantity: number;
-  selected: boolean; // <--- Tracks checkbox state
+  selected: boolean; 
 }
+
+// 2. DEFINE HELPER TYPES FOR DB ROWS
+type SettingRow = Database['public']['Tables']['site_settings']['Row'];
 
 interface StoreState {
   // Data State
@@ -32,11 +36,11 @@ interface StoreState {
   removeFromCart: (variantId: string) => void;
   updateQuantity: (variantId: string, delta: number) => void;
   
-  // Selection Actions (New)
+  // Selection Actions
   toggleItemSelection: (variantId: string) => void;
   toggleAllSelection: (isSelected: boolean) => void;
-  removeSelected: () => void; // Used after checkout
-  clearCart: () => void;      // Used for full reset
+  removeSelected: () => void; 
+  clearCart: () => void;      
 
   toggleAdmin: () => void;
   toggleCart: (isOpen?: boolean) => void;
@@ -71,7 +75,7 @@ export const useStore = create<StoreState>()(
           set({
             cart: currentCart.map((item) =>
               item.uniqueId === variant.id
-                ? { ...item, quantity: item.quantity + 1, selected: true } // Auto re-select
+                ? { ...item, quantity: item.quantity + 1, selected: true } 
                 : item
             ),
             isCartOpen: true 
@@ -86,7 +90,7 @@ export const useStore = create<StoreState>()(
                 product,
                 variant,
                 quantity: 1,
-                selected: true, // Auto-select new items
+                selected: true, 
               },
             ],
             isCartOpen: true
@@ -141,7 +145,7 @@ export const useStore = create<StoreState>()(
           const [productsRes, bannersRes, settingsRes] = await Promise.all([
             supabase
               .from('products')
-              .select('*, images:base_images, price:base_price') // MAP COLUMNS HERE
+              .select('*, images:base_images, price:base_price') // MAP COLUMNS
               .eq('is_active', true)
               .order('created_at', { ascending: false }),
             
@@ -155,15 +159,22 @@ export const useStore = create<StoreState>()(
               .select('*')
           ]);
 
-          // Process Settings into Object
-          const settingsMap = (settingsRes.data || []).reduce((acc: any, curr: any) => {
-            acc[curr.key] = curr.value;
+          // ✅ SAFE: Strictly Typed Settings Reducer
+          // We explicitly tell TS that 'settingsRes.data' is 'SettingRow[]'
+          const rawSettings = (settingsRes.data as SettingRow[]) || [];
+          
+          const settingsMap = rawSettings.reduce((acc, curr) => {
+            // Guard against null keys or values
+            if (curr.key && curr.value) {
+                acc[curr.key] = curr.value;
+            }
             return acc;
-          }, {});
+          }, {} as Record<string, string>);
 
           set({
-            products: (productsRes.data as any) || [],
-            banners: (bannersRes.data as any) || [],
+            // ✅ SAFE: Double casting to bridge DB JSON -> App Interface
+            products: (productsRes.data as unknown as Product[]) || [],
+            banners: (bannersRes.data as unknown as Banner[]) || [],
             settings: settingsMap,
             isLoading: false,
           });

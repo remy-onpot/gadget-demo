@@ -1,4 +1,4 @@
-import { createStaticClient } from '@/lib/supabase-server'; // ✅ Fixed Import (No cookies)
+import { createStaticClient } from '@/lib/supabase-server'; 
 import { cacheService } from '@/lib/cache-wrapper';
 import { Product, CategorySection, Category, FilterRule } from '@/lib/types';
 import { Database } from '@/lib/database.types';
@@ -10,13 +10,23 @@ type VariantRow = Database['public']['Tables']['product_variants']['Row'];
 type CategoryMetaRow = Database['public']['Tables']['category_metadata']['Row'];
 type SectionRow = Database['public']['Tables']['category_sections']['Row'];
 
-// Helper to handle the Join
-type ProductWithRelations = ProductRow & {
+// 1. QUERY RETURN SHAPES
+// A. Full Details (Product Page, Featured)
+type ProductWithFullVariants = ProductRow & {
   variants: VariantRow[];
 };
 
-// 1. MAPPER: Database -> Application
-const mapToProduct = (raw: ProductWithRelations): Product => {
+// B. Lightweight (Feeds, Grids, Search) - Only fetches price to save bandwidth
+type ProductWithPrice = ProductRow & {
+  variants: Pick<VariantRow, 'price'>[];
+};
+
+// 2. MAPPERS
+
+/**
+ * MAPPER A: For Single Product Pages (Full Detail)
+ */
+const mapToProduct = (raw: ProductWithFullVariants): Product => {
   const prices = raw.variants?.map((v) => v.price) || [];
   const minPrice = prices.length > 0 ? Math.min(...prices) : (raw.base_price || 0);
 
@@ -24,41 +34,68 @@ const mapToProduct = (raw: ProductWithRelations): Product => {
     id: raw.id,
     name: raw.name,
     slug: raw.slug,
-    brand: raw.brand,
-    category: raw.category as Category, // The DB string becomes the App Category
-    description: raw.description || undefined,
+    brand: raw.brand || 'Generic',
+    category: raw.category as Category,
+    description: raw.description || undefined, // ✅ Fix Null -> Undefined
     price: minPrice,
-    originalPrice: raw.base_price,
+    originalPrice: raw.base_price || undefined, // ✅ Fix Null -> Undefined
     images: raw.base_images || [],
     isFeatured: raw.is_featured ?? false,
     isActive: raw.is_active ?? false,
+    // Full Variant Mapping
     variants: raw.variants.map(v => ({
       id: v.id,
       product_id: raw.id,
       condition: v.condition,
       price: v.price,
       stock: v.stock || 0,
-      specs: (v.specs as Record<string, any>) || {},
+      specs: (v.specs as Record<string, string>) || {},
       images: v.images || []
     })),
     specs: {}
   };
 };
 
+/**
+ * MAPPER B: For Lists/Grids (Lightweight)
+ * Ignores stock/condition details to prevent crashes when they aren't fetched.
+ */
+const mapToListProduct = (raw: ProductWithPrice): Product => {
+  const prices = raw.variants?.map((v) => v.price) || [];
+  const minPrice = prices.length > 0 ? Math.min(...prices) : (raw.base_price || 0);
+
+  return {
+    id: raw.id,
+    name: raw.name,
+    slug: raw.slug,
+    brand: raw.brand || 'Generic',
+    category: raw.category as Category,
+    description: raw.description || undefined,
+    price: minPrice,
+    originalPrice: raw.base_price || undefined,
+    images: raw.base_images || [],
+    isFeatured: raw.is_featured ?? false,
+    isActive: raw.is_active ?? false,
+    variants: [], // ✅ Empty variants for lists (Optimization)
+    specs: {}
+  };
+};
+
 // ==========================================
-// 1. FEATURED PRODUCTS
+// 1. FEATURED PRODUCTS (Full Detail)
 // ==========================================
 const getFeaturedInternal = async (): Promise<Product[]> => {
-  const supabase = createStaticClient(); // ✅ Static Client
+  const supabase = createStaticClient();
   const { data } = await supabase
     .from('products')
-    .select('*, variants:product_variants(*)')
+    .select('*, variants:product_variants(*)') // Fetch EVERYTHING
     .eq('is_active', true)
     .eq('is_featured', true)
     .limit(8);
 
   if (!data) return [];
-  return (data as ProductWithRelations[]).map(mapToProduct);
+  // Use Full Mapper
+  return (data as unknown as ProductWithFullVariants[]).map(mapToProduct);
 };
 
 export const getFeaturedProducts = cacheService(getFeaturedInternal, ['featured-products'], { tags: ['products'] });
@@ -72,14 +109,14 @@ type FeedData = {
 };
 
 const getCategoryFeedInternal = async (): Promise<FeedData> => {
-  const supabase = createStaticClient(); // ✅ Static Client
+  const supabase = createStaticClient();
   const RAIL_LIMIT = 8;
 
-  // A. Fetch Everything (In parallel for speed)
+  // A. Fetch Everything (Lightweight)
   const [productsRes, sectionsRes, metaRes] = await Promise.all([
     supabase
         .from('products')
-        .select('*, variants:product_variants(price)')
+        .select('*, variants:product_variants(price)') // ✅ Fetch ONLY price
         .eq('is_active', true)
         .order('created_at', { ascending: false }),
     
@@ -92,7 +129,8 @@ const getCategoryFeedInternal = async (): Promise<FeedData> => {
     supabase.from('category_metadata').select('*')
   ]);
 
-  const allProducts = (productsRes.data as ProductWithRelations[] || []).map(mapToProduct);
+  // Use List Mapper
+  const allProducts = (productsRes.data as unknown as ProductWithPrice[] || []).map(mapToListProduct);
   const sections = sectionsRes.data || [];
   
   // B. Map Metadata
@@ -119,11 +157,6 @@ const getCategoryFeedInternal = async (): Promise<FeedData> => {
           );
 
           if (matches.length > 0) {
-              // We use the category slug as the key, but we might have multiple rows for one category.
-              // For the Homepage Feed, usually we just want "Laptops", "Phones".
-              // If you want granular rows on Home, we'd need a different structure. 
-              // For now, let's group by Category Slug, taking the best matches.
-              
               if (!grouped[section.category_slug]) {
                   grouped[section.category_slug] = [];
               }
@@ -146,7 +179,6 @@ const getCategoryFeedInternal = async (): Promise<FeedData> => {
           grouped[catKey] = [];
       }
       if (grouped[catKey].length < RAIL_LIMIT) {
-          // Check if already added (unlikely here but safe)
           if (!grouped[catKey].some(ex => ex.id === p.id)) {
               grouped[catKey].push(p);
           }
@@ -167,15 +199,16 @@ export const getCategoryFeed = cacheService(getCategoryFeedInternal, ['category-
 // 3. SINGLE PRODUCT
 // ==========================================
 const getProductBySlugInternal = async (slug: string): Promise<Product | null> => {
-  const supabase = createStaticClient(); // ✅ Static Client
+  const supabase = createStaticClient();
   const { data } = await supabase
     .from('products')
-    .select('*, variants:product_variants(*)')
+    .select('*, variants:product_variants(*)') // Fetch EVERYTHING
     .eq('slug', slug)
     .single();
 
   if (!data) return null;
-  return mapToProduct(data as ProductWithRelations);
+  // Use Full Mapper
+  return mapToProduct(data as unknown as ProductWithFullVariants);
 };
 
 export const getProductBySlug = cacheService(
@@ -188,10 +221,10 @@ export const getProductBySlug = cacheService(
 // 4. RELATED PRODUCTS
 // ==========================================
 const getRelatedProductsInternal = async (category: string, excludeId: string): Promise<Product[]> => {
-  const supabase = createStaticClient(); // ✅ Static Client
+  const supabase = createStaticClient();
   const { data } = await supabase
     .from('products')
-    .select('*, variants:product_variants(price)')
+    .select('*, variants:product_variants(price)') // Fetch ONLY price
     .eq('category', category)
     .neq('id', excludeId)
     .eq('is_active', true)
@@ -199,10 +232,8 @@ const getRelatedProductsInternal = async (category: string, excludeId: string): 
 
   if (!data) return [];
   
-  return (data as ProductWithRelations[]).map(p => ({
-    ...mapToProduct(p),
-    variants: [] // Optimization: Don't need full variant details for cards
-  }));
+  // Use List Mapper
+  return (data as unknown as ProductWithPrice[]).map(mapToListProduct);
 };
 
 export const getRelatedProducts = cacheService(
@@ -220,19 +251,17 @@ export type CategoryPageData = {
 };
 
 const getCategoryPageDataInternal = async (slug: string): Promise<CategoryPageData> => {
-  const supabase = createStaticClient(); // ✅ Static Client
+  const supabase = createStaticClient();
 
-  // A. Products
+  // A. Products (Lightweight)
   const { data: productsRaw } = await supabase
     .from('products')
     .select('*, variants:product_variants(price)')
     .eq('category', slug)
     .eq('is_active', true);
 
-  const products = (productsRaw as ProductWithRelations[] || []).map(p => ({
-     ...mapToProduct(p),
-     variants: []
-  }));
+  // Use List Mapper
+  const products = (productsRaw as unknown as ProductWithPrice[] || []).map(mapToListProduct);
 
   // B. Layouts (Admin Configured Rows)
   const { data: sectionsRaw } = await supabase

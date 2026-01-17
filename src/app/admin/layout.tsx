@@ -1,9 +1,27 @@
 "use client";
 import React from 'react';
-import { LayoutDashboard, Package, Image as ImageIcon, Users, LogOut, Layers, Sliders, Settings, ShoppingBag } from 'lucide-react';
+import { 
+  LayoutDashboard, 
+  Package, 
+  Image as ImageIcon, 
+  LogOut, 
+  Layers, 
+  Sliders, 
+  Settings, 
+  ShoppingBag, 
+  Ghost,
+  LayoutGrid // ✅ Import Grid Icon
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { MobileExperiencePrompt } from '@/components/ui/MobileExperiencePrompt';
+
+interface NavItemProps {
+  href: string;
+  icon: React.ReactNode; // Allows passing <Package size={20} />
+  label: string;
+  active: boolean;
+}
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -20,6 +38,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <p className="text-xs font-bold text-slate-500 uppercase px-4 mt-2 mb-1">Store</p>
           <NavItem href="/admin" active={pathname === '/admin'} icon={<LayoutDashboard size={20} />} label="Overview" />
           <NavItem href="/admin/orders" active={pathname === '/admin/orders'} icon={<ShoppingBag size={20} />} label="Orders" />
+          <NavItem href="/admin/carts" active={pathname === '/admin/carts'} icon={<Ghost size={20} />} label="Abandoned Carts" />
           
           <p className="text-xs font-bold text-slate-500 uppercase px-4 mt-6 mb-1">Catalog</p>
           <NavItem href="/admin/inventory" active={pathname === '/admin/inventory'} icon={<Package size={20} />} label="Inventory" />
@@ -27,6 +46,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           
           <p className="text-xs font-bold text-slate-500 uppercase px-4 mt-6 mb-1">Design</p>
           <NavItem href="/admin/banners" active={pathname === '/admin/banners'} icon={<ImageIcon size={20} />} label="Banners" />
+          {/* ✅ NEW LINK */}
+          <NavItem href="/admin/grid" active={pathname === '/admin/grid'} icon={<LayoutGrid size={20} />} label="Home Grid" />
           <NavItem href="/admin/layouts" active={pathname === '/admin/layouts'} icon={<Layers size={20} />} label="Category Layouts" />
           <NavItem href="/admin/settings" active={pathname === '/admin/settings'} icon={<Settings size={20} />} label="Site Settings" />
         </nav>
@@ -48,7 +69,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   );
 }
 
-const NavItem = ({ href, icon, label, active }: any) => (
+const NavItem = ({ href, icon, label, active }: NavItemProps) => (
   <Link 
     href={href} 
     className={`flex items-center gap-3 px-4 py-3 rounded-xl transition font-medium text-sm ${

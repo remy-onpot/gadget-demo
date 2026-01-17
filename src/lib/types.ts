@@ -1,5 +1,5 @@
 // --- GLOBAL CATEGORIES ---
-export type Category = 'laptop' | 'audio' | 'phone' | 'gaming' | 'monitor' | 'printer' | 'accessory' | 'camera' | 'tv' | 'tablet' | 'wearable';
+export type Category = string;
 
 // --- FLEXIBLE SPECS ENGINE ---
 export type ProductSpecMap = Record<string, string | number | boolean>;
@@ -9,7 +9,7 @@ export interface Variant {
   id: string;
   product_id: string;
   sku?: string;
-  condition: string; // 'New', 'Open Box', 'UK Used'
+  condition: string; // 'New', 'Open Box', 'Refurbished' (Generic)
   price: number;
   originalPrice?: number;
   stock: number;
@@ -25,7 +25,7 @@ export interface Product {
   brand: string;
   category: Category;
   description?: string;
-  price: number;         // Starting Price
+  price: number;         // Starting Price (Lowest variant)
   originalPrice?: number;
   images: string[];      // Main Gallery
   isFeatured?: boolean;
@@ -35,7 +35,6 @@ export interface Product {
 }
 
 // --- BANNER & HERO SLOTS ---
-// Updated to include the new "Hero Grid" slots AND your legacy slots
 export type BannerSlot = 
   | 'main_hero' 
   | 'side_top' 
@@ -48,7 +47,6 @@ export type BannerSlot =
   | 'branch_slider';
 
 // --- BANNER CONFIGURATION ---
-// Maps slots to recommended dimensions for the Admin UI
 export interface BannerConfig {
   label: string;
   width: number;
@@ -58,7 +56,7 @@ export interface BannerConfig {
 }
 
 export const BANNER_RULES: Record<BannerSlot, BannerConfig> = {
-  // --- NEW HERO GRID SLOTS ---
+  // --- HERO GRID SLOTS ---
   main_hero: {
     label: "Home: Main Hero (Left)",
     width: 1200,
@@ -81,7 +79,7 @@ export const BANNER_RULES: Record<BannerSlot, BannerConfig> = {
     description: "Bottom right card. White background style."
   },
   
-  // --- LEGACY / OTHER SLOTS ---
+  // --- OTHER SLOTS ---
   brand_hero: {
     label: "Page Header (Top)",
     width: 1920,
@@ -127,15 +125,14 @@ export const BANNER_RULES: Record<BannerSlot, BannerConfig> = {
 };
 
 // --- RICH BANNER DATA ---
-// Updated to match your new DB Schema
 export interface Banner {
   id: string;
   slot: BannerSlot;
   image_url: string;
-  link_url: string; // Matches DB column 'link_url'
+  link_url: string;
   is_active: boolean;
   
-  // Rich Content Fields (New)
+  // Rich Content Fields
   title: string;
   description?: string;
   label?: string;
@@ -152,7 +149,7 @@ export interface Order {
   delivery_address: string;
   delivery_notes?: string;
   total_amount: number;
-  status: 'pending' | 'confirmed' | 'delivered' | 'cancelled';
+  status: 'pending' | 'shipped' | 'completed' | 'cancelled'; // Unified status keys
   items?: OrderItem[];
 }
 
@@ -171,11 +168,10 @@ export interface SiteSetting {
   label: string;
 }
 
-// ✅ FIX: Aligned with src/lib/filter-engine.ts
 export interface FilterRule {
-  key: string;        // Changed from 'field' to 'key'
-  field?: string;     // Optional legacy support
-  operator: 'eq' | 'contains' | 'gt' | 'lt' | 'gte' | 'lte' | 'neq'; // Added 'neq'
+  key: string;       
+  field?: string;    // Kept for backward compatibility if needed
+  operator: 'eq' | 'contains' | 'gt' | 'lt' | 'gte' | 'lte' | 'neq';
   value: string | number;
 }
 

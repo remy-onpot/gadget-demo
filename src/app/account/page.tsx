@@ -1,19 +1,40 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { User, Lock, Package, Save, Loader2, LogOut, Phone, MapPin, Mail, Calendar, ChevronRight, ShieldCheck } from 'lucide-react';
+import { User } from '@supabase/supabase-js'; // ✅ Import Auth User Type
+import { Database } from '@/lib/database.types'; // ✅ Import DB Types
+import { User as UserIcon, Lock, Package, Save, Loader2, LogOut, Phone, MapPin, Mail, Calendar, ChevronRight, ShieldCheck } from 'lucide-react';
+
+// 1. DEFINE ROW TYPES
+type ProfileRow = Database['public']['Tables']['profiles']['Row'];
+type OrderRow = Database['public']['Tables']['orders']['Row'];
+
+// 2. DEFINE COMPONENT PROPS
+interface NavButtonProps {
+  active: boolean;
+  onClick: () => void;
+  icon: ReactNode;
+  label: string;
+  desc: string;
+}
+
+interface InputGroupProps {
+  label: string;
+  icon: ReactNode;
+  children: ReactNode;
+}
 
 export default function ProfilePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'orders'>('profile');
   
-  // Data States
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
-  const [orders, setOrders] = useState<any[]>([]);
+  // Data States (Strictly Typed)
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const [orders, setOrders] = useState<OrderRow[]>([]);
 
   // Form States
   const [fullName, setFullName] = useState('');
@@ -39,34 +60,36 @@ export default function ProfilePage() {
     setUser(user);
 
     // 2. Get Public Profile
-    const { data: profile } = await supabase
+    const { data: profileData } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .maybeSingle();
 
-    if (profile) {
-      setProfile(profile);
-      setFullName(profile.full_name || '');
-      setPhone(profile.phone || '');
-      setAddress(profile.shipping_address || '');
+    if (profileData) {
+      setProfile(profileData);
+      setFullName(profileData.full_name || '');
+      setPhone(profileData.phone || '');
+      setAddress(profileData.shipping_address || '');
     }
 
     // 3. Get Orders
-    const { data: orders } = await supabase
+    const { data: ordersData } = await supabase
       .from('orders')
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
-    if (orders) setOrders(orders);
+    if (ordersData) setOrders(ordersData);
     
     setLoading(false);
   };
 
   const updateProfile = async () => {
+    if (!user) return;
     setSaving(true);
     setMessage(null);
+    
     try {
       const { error } = await supabase
         .from('profiles')
@@ -80,8 +103,9 @@ export default function ProfilePage() {
 
       if (error) throw error;
       setMessage({ type: 'success', text: 'Profile updated successfully!' });
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "An unknown error occurred";
+      setMessage({ type: 'error', text: msg });
     } finally {
       setSaving(false);
     }
@@ -95,8 +119,9 @@ export default function ProfilePage() {
       if (error) throw error;
       setMessage({ type: 'success', text: 'Password updated! Please login again next time.' });
       setNewPassword('');
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "An unknown error occurred";
+      setMessage({ type: 'error', text: msg });
     } finally {
       setSaving(false);
     }
@@ -109,6 +134,7 @@ export default function ProfilePage() {
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-orange-500" size={32}/></div>;
+  if (!user) return null; // Guard clause
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
@@ -130,7 +156,7 @@ export default function ProfilePage() {
            {/* Avatar */}
            <div className="relative shrink-0">
              <div className="w-24 h-24 sm:w-32 sm:h-32 bg-slate-900 rounded-full flex items-center justify-center text-3xl sm:text-4xl font-black text-white ring-4 ring-white shadow-lg">
-                {fullName ? fullName.charAt(0) : user.email.charAt(0).toUpperCase()}
+                {fullName ? fullName.charAt(0) : user.email?.charAt(0).toUpperCase()}
              </div>
              <div className="absolute bottom-1 right-1 bg-green-500 w-6 h-6 rounded-full border-4 border-white"></div>
            </div>
@@ -156,29 +182,29 @@ export default function ProfilePage() {
           
           {/* SIDEBAR NAV */}
           <div className="md:col-span-3 lg:col-span-3">
-             <div className="sticky top-24 space-y-2">
-                <NavButton 
-                  active={activeTab === 'profile'} 
-                  onClick={() => setActiveTab('profile')} 
-                  icon={<User size={18} />} 
-                  label="My Profile" 
-                  desc="Manage your info"
-                />
-                <NavButton 
-                  active={activeTab === 'orders'} 
-                  onClick={() => setActiveTab('orders')} 
-                  icon={<Package size={18} />} 
-                  label="Order History" 
-                  desc="Track purchases"
-                />
-                <NavButton 
-                  active={activeTab === 'security'} 
-                  onClick={() => setActiveTab('security')} 
-                  icon={<ShieldCheck size={18} />} 
-                  label="Security" 
-                  desc="Password & Login"
-                />
-             </div>
+              <div className="sticky top-24 space-y-2">
+                 <NavButton 
+                   active={activeTab === 'profile'} 
+                   onClick={() => setActiveTab('profile')} 
+                   icon={<UserIcon size={18} />} 
+                   label="My Profile" 
+                   desc="Manage your info"
+                 />
+                 <NavButton 
+                   active={activeTab === 'orders'} 
+                   onClick={() => setActiveTab('orders')} 
+                   icon={<Package size={18} />} 
+                   label="Order History" 
+                   desc="Track purchases"
+                 />
+                 <NavButton 
+                   active={activeTab === 'security'} 
+                   onClick={() => setActiveTab('security')} 
+                   icon={<ShieldCheck size={18} />} 
+                   label="Security" 
+                   desc="Password & Login"
+                 />
+              </div>
           </div>
 
           {/* CONTENT AREA */}
@@ -197,13 +223,13 @@ export default function ProfilePage() {
               {activeTab === 'profile' && (
                 <div className="max-w-xl animate-in fade-in slide-in-from-bottom-4 duration-500">
                   <div className="mb-8 border-b border-slate-100 pb-4">
-                     <h2 className="text-xl font-black text-slate-900">Personal Details</h2>
-                     <p className="text-slate-500 text-sm mt-1">Update your shipping information for faster checkout.</p>
+                      <h2 className="text-xl font-black text-slate-900">Personal Details</h2>
+                      <p className="text-slate-500 text-sm mt-1">Update your shipping information for faster checkout.</p>
                   </div>
 
                   <div className="space-y-6">
                     <div className="grid sm:grid-cols-2 gap-6">
-                        <InputGroup label="Full Name" icon={<User size={18} />}>
+                        <InputGroup label="Full Name" icon={<UserIcon size={18} />}>
                            <input value={fullName} onChange={e => setFullName(e.target.value)} className="w-full pl-10 p-3 bg-slate-50 border-transparent focus:bg-white border-2 focus:border-orange-500 rounded-xl font-bold text-slate-900 outline-none transition-all" />
                         </InputGroup>
 
@@ -213,7 +239,7 @@ export default function ProfilePage() {
                     </div>
 
                     <InputGroup label="Shipping Address" icon={<MapPin size={18} />}>
-                       <textarea value={address} onChange={e => setAddress(e.target.value)} rows={3} placeholder="Apartment, Street, City..." className="w-full pl-10 p-3 bg-slate-50 border-transparent focus:bg-white border-2 focus:border-orange-500 rounded-xl font-medium text-slate-700 outline-none transition-all resize-none" />
+                        <textarea value={address} onChange={e => setAddress(e.target.value)} rows={3} placeholder="Apartment, Street, City..." className="w-full pl-10 p-3 bg-slate-50 border-transparent focus:bg-white border-2 focus:border-orange-500 rounded-xl font-medium text-slate-700 outline-none transition-all resize-none" />
                     </InputGroup>
                     
                     <div className="pt-2">
@@ -229,18 +255,18 @@ export default function ProfilePage() {
               {activeTab === 'security' && (
                 <div className="max-w-xl animate-in fade-in slide-in-from-bottom-4 duration-500">
                   <div className="mb-8 border-b border-slate-100 pb-4">
-                     <h2 className="text-xl font-black text-slate-900">Login & Security</h2>
-                     <p className="text-slate-500 text-sm mt-1">Manage your account credentials.</p>
+                      <h2 className="text-xl font-black text-slate-900">Login & Security</h2>
+                      <p className="text-slate-500 text-sm mt-1">Manage your account credentials.</p>
                   </div>
                   
                   <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 mb-8 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-slate-400 shadow-sm border border-slate-100">
-                         <Mail size={18} />
+                          <Mail size={18} />
                       </div>
                       <div>
-                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Email Address</p>
-                         <p className="font-bold text-slate-900">{user.email}</p>
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Email Address</p>
+                          <p className="font-bold text-slate-900">{user.email}</p>
                       </div>
                     </div>
                     <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded">VERIFIED</span>
@@ -248,19 +274,19 @@ export default function ProfilePage() {
 
                   <div className="space-y-6">
                     <InputGroup label="New Password" icon={<Lock size={18} />}>
-                       <input 
-                         type="password" 
-                         value={newPassword} 
-                         onChange={e => setNewPassword(e.target.value)} 
-                         placeholder="••••••••" 
-                         className="w-full pl-10 p-3 bg-slate-50 border-transparent focus:bg-white border-2 focus:border-orange-500 rounded-xl font-bold text-slate-900 outline-none transition-all" 
-                       />
+                        <input 
+                          type="password" 
+                          value={newPassword} 
+                          onChange={e => setNewPassword(e.target.value)} 
+                          placeholder="••••••••" 
+                          className="w-full pl-10 p-3 bg-slate-50 border-transparent focus:bg-white border-2 focus:border-orange-500 rounded-xl font-bold text-slate-900 outline-none transition-all" 
+                        />
                     </InputGroup>
                     <p className="text-xs text-slate-400 ml-1">Must contain lowercase, uppercase, digits,symbols and be at least 8 characters long.</p>
 
                     <div className="pt-2">
                       <button onClick={updatePassword} disabled={saving || !newPassword} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-orange-500 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100 shadow-lg shadow-slate-900/10">
-                         {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} Update Password
+                          {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} Update Password
                       </button>
                     </div>
                   </div>
@@ -302,7 +328,10 @@ export default function ProfilePage() {
                                       Order #{order.id.slice(0,8)}
                                    </p>
                                    <p className="text-xs text-slate-500 font-medium flex items-center gap-1 mt-1">
-                                      <Calendar size={10} /> {new Date(order.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+                                      <Calendar size={10} /> {order.created_at 
+  ? new Date(order.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) 
+  : 'Date N/A'
+}
                                    </p>
                                 </div>
                              </div>
@@ -314,7 +343,8 @@ export default function ProfilePage() {
                                    }`}>
                                       {order.status}
                                    </span>
-                                   <p className="font-black text-slate-900 mt-1">₵{order.total_amount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                   {/* Safe check for total_amount */}
+                                   <p className="font-black text-slate-900 mt-1">₵{(order.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                 </div>
                                 <ChevronRight className="text-slate-300 group-hover:text-orange-500 transition-colors" size={20} />
                              </div>
@@ -335,7 +365,7 @@ export default function ProfilePage() {
 
 // ---------------- SUB-COMPONENTS ----------------
 
-function NavButton({ active, onClick, icon, label, desc }: any) {
+function NavButton({ active, onClick, icon, label, desc }: NavButtonProps) {
   return (
     <button 
       onClick={onClick}
@@ -356,7 +386,7 @@ function NavButton({ active, onClick, icon, label, desc }: any) {
   );
 }
 
-function InputGroup({ label, icon, children }: any) {
+function InputGroup({ label, icon, children }: InputGroupProps) {
    return (
       <div className="space-y-1.5">
          <label className="text-xs font-bold uppercase text-slate-400 ml-1">{label}</label>

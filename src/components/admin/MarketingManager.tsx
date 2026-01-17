@@ -7,14 +7,13 @@ import { Trash2, AlertCircle, CheckCircle, Loader2, Link as LinkIcon, ImagePlus,
 import Image from 'next/image';
 
 // --- CONFIGURATION ---
-// Generic groups that apply to any e-commerce store
-const SLOT_GROUPS = {
+const SLOT_GROUPS: Record<string, BannerSlot[]> = {
   'Homepage Hero': ['main_hero', 'side_top', 'side_bottom'],
-  'Featured Sections': ['tile_new', 'tile_student', 'flash'], // Renamed from "Discovery Tiles"
+  'Featured Sections': ['tile_new', 'tile_student', 'flash'], 
   'Store Info': ['branch_slider', 'brand_hero']
 };
 
-const RICH_CONTENT_SLOTS = ['main_hero', 'side_top', 'side_bottom', 'brand_hero'];
+const RICH_CONTENT_SLOTS: BannerSlot[] = ['main_hero', 'side_top', 'side_bottom', 'brand_hero'];
 
 export const MarketingManager = () => {
   const [banners, setBanners] = useState<Banner[]>([]);
@@ -44,8 +43,15 @@ export const MarketingManager = () => {
   }, []);
 
   const fetchBanners = async () => {
-    const { data } = await supabase.from('banners').select('*').order('created_at', { ascending: false });
-    if (data) setBanners(data as any);
+    const { data } = await supabase
+      .from('banners')
+      .select('*')
+      .order('created_at', { ascending: false });
+      
+    // ✅ FIX 1: Safe Casting (DB JSON -> App Interface)
+    if (data) {
+        setBanners(data as unknown as Banner[]);
+    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -72,7 +78,8 @@ export const MarketingManager = () => {
       const { error: upErr } = await supabase.storage.from('marketing').upload(fileName, imageFile);
       if (upErr) throw upErr;
 
-      const { data: { publicUrl } } = supabase.storage.from('marketing').getPublicUrl(fileName);
+      const { data: publicUrlData } = supabase.storage.from('marketing').getPublicUrl(fileName);
+      const publicUrl = publicUrlData.publicUrl;
 
       const { data, error } = await supabase.from('banners').insert({
         slot: selectedSlot,
@@ -88,14 +95,17 @@ export const MarketingManager = () => {
 
       if (error) throw error;
       
-      setBanners([data as any, ...banners]);
+      // ✅ FIX 2: Safe Casting for Single Item
+      setBanners([data as unknown as Banner, ...banners]);
       
       // Reset Form
       setImageFile(null);
       setPreviewUrl('');
       setFormData({ title: '', description: '', label: '', cta_text: 'Shop Now', link_url: '', bg_color: '#0A2540' });
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      // ✅ FIX 3: Safe Error Handling
+      const msg = e instanceof Error ? e.message : "An unknown error occurred";
+      setError(msg);
     } finally {
       setUploading(false);
     }
@@ -191,7 +201,7 @@ export const MarketingManager = () => {
                             : 'bg-white text-slate-600 border-gray-200 hover:bg-gray-50'
                           }`}
                         >
-                          {BANNER_RULES[slotKey as BannerSlot].label.split(':')[1] || BANNER_RULES[slotKey as BannerSlot].label}
+                          {BANNER_RULES[slotKey].label.split(':')[1] || BANNER_RULES[slotKey].label}
                         </button>
                       ))}
                     </div>
@@ -295,9 +305,11 @@ export const MarketingManager = () => {
               
               {previewUrl ? (
                  <div className="relative w-full h-full flex items-center justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img 
                         src={previewUrl} 
                         className={selectedSlot === 'brand_hero' ? "w-full h-full object-cover opacity-80" : "max-w-[80%] max-h-[80%] object-contain drop-shadow-xl z-10"} 
+                        alt="Preview"
                     />
                     
                     {/* Live Text Preview Overlay */}

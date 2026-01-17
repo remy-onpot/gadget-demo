@@ -2,12 +2,13 @@
 
 import React, { useEffect, useState, useTransition } from 'react';
 import { supabase } from '@/lib/supabase';
-import { updateCategoryMeta } from '@/app/admin/actions'; // ✅ Server Action
-import { Database } from '@/lib/database.types'; // ✅ Correct Types
+import { updateCategoryMeta } from '@/app/admin/actions'; 
+import { Database } from '@/lib/database.types';
 import { Save, Loader2, Layers, RefreshCw, ImagePlus, Upload, Trash2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/utils'; // ✅ Import the new helper
 
-// 1. USE DB TYPE (Solves 'string | null' mismatch)
+// 1. USE DB TYPE
 type CategoryMeta = Database['public']['Tables']['category_metadata']['Row'];
 
 export default function LayoutsPage() {
@@ -76,7 +77,7 @@ export default function LayoutsPage() {
     setHasUnsavedChanges(false);
   };
 
-  const handleUpdate = (slug: string, field: keyof CategoryMeta, value: any) => {
+  const handleUpdate = (slug: string, field: keyof CategoryMeta, value: string | boolean | null) => {
     setCategories(prev => prev.map(c => c.slug === slug ? { ...c, [field]: value } : c));
     setHasUnsavedChanges(true);
   };
@@ -90,7 +91,7 @@ export default function LayoutsPage() {
       const fileName = `${slug}-${Date.now()}.${fileExt}`; // Unique name
       const filePath = `categories/${fileName}`;
 
-      // Upload to 'marketing' bucket (Step 9 setup)
+      // Upload to 'marketing' bucket
       const { error: uploadError } = await supabase.storage
         .from('marketing')
         .upload(filePath, file, { upsert: true });
@@ -104,8 +105,8 @@ export default function LayoutsPage() {
       handleUpdate(slug, 'image_url', publicUrl);
       toast.success("Image staged");
 
-    } catch (error: any) {
-      toast.error('Upload failed: ' + error.message);
+    } catch (error: unknown) { // ✅ Use unknown + helper
+      toast.error('Upload failed: ' + getErrorMessage(error));
     } finally {
       setUploading(null);
     }
@@ -117,8 +118,8 @@ export default function LayoutsPage() {
             await updateCategoryMeta(categories);
             setHasUnsavedChanges(false);
             toast.success("Layouts saved successfully");
-        } catch (err: any) {
-            toast.error("Failed to save: " + err.message);
+        } catch (err: unknown) { // ✅ Use unknown + helper
+            toast.error("Failed to save: " + getErrorMessage(err));
         }
     });
   };
@@ -187,6 +188,7 @@ export default function LayoutsPage() {
                <div className="aspect-[4/5] rounded-2xl bg-slate-900 overflow-hidden relative border border-slate-200 group">
                   {cat.image_url ? (
                     <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img 
                         src={cat.image_url} 
                         alt="Preview" 

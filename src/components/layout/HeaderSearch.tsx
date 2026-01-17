@@ -6,9 +6,26 @@ import { Search, X, Loader2, ArrowRight, MessageCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Product } from '@/lib/types';
 import Link from 'next/link';
+import { Database } from '@/lib/database.types';
 
-// Added whatsappNumber prop so you can pass it from your Layout/Header wrapper
-export const HeaderSearch = ({ isMobile = false, onClose, whatsappNumber }: { isMobile?: boolean, onClose?: () => void, whatsappNumber?: string }) => {
+// 1. DEFINE RAW DB RESULT SHAPE
+// This matches exactly what the supabase .select() returns
+interface RawSearchResult {
+  id: string;
+  name: string;
+  slug: string;
+  base_price: number | null;
+  base_images: string[] | null;
+  variants: { price: number }[]; // Joined data
+}
+
+interface HeaderSearchProps {
+  isMobile?: boolean;
+  onClose?: () => void;
+  whatsappNumber?: string;
+}
+
+export const HeaderSearch = ({ isMobile = false, onClose, whatsappNumber }: HeaderSearchProps) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -42,7 +59,7 @@ export const HeaderSearch = ({ isMobile = false, onClose, whatsappNumber }: { is
 
       setIsLoading(true);
       setShowDropdown(true);
-      setSelectedIndex(-1); // Reset selection on new search
+      setSelectedIndex(-1); 
 
       // OPTIMIZATION: Select specific fields only for speed
       const { data } = await supabase
@@ -53,12 +70,33 @@ export const HeaderSearch = ({ isMobile = false, onClose, whatsappNumber }: { is
         .limit(5);
 
       if (data) {
-        // Normalize data with proper typing
-        const cleanData = data.map((p: any) => ({
-           ...p,
-           price: p.variants?.[0]?.price || p.base_price || 0,
-           images: p.base_images || []
-        })) as Product[];
+        // ✅ FIX: Strict Type Casting
+        const rawData = data as unknown as RawSearchResult[];
+        
+        const cleanData: Product[] = rawData.map((p) => {
+           // Calculate price safely
+           const variantPrice = p.variants?.[0]?.price;
+           const finalPrice = variantPrice ?? p.base_price ?? 0;
+
+           return {
+             id: p.id,
+             name: p.name,
+             slug: p.slug,
+             price: finalPrice,
+             images: p.base_images || [], // Map DB 'base_images' to App 'images'
+             
+             // Provide defaults for fields we didn't fetch to satisfy Product type
+             brand: '',
+             category: '',
+             description: undefined,
+             originalPrice: undefined,
+             specs: {},
+             variants: [],
+             isActive: true,
+             isFeatured: false
+           };
+        });
+        
         setResults(cleanData);
       }
       setIsLoading(false);
@@ -115,7 +153,7 @@ export const HeaderSearch = ({ isMobile = false, onClose, whatsappNumber }: { is
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown} // <--- Added Listener
+            onKeyDown={handleKeyDown} 
             onFocus={() => query.length >= 2 && setShowDropdown(true)}
             placeholder={isMobile ? "Search products..." : "Search laptops, consoles..."}
             className="w-full bg-gray-100/80 border-transparent border focus:bg-white focus:border-orange-200 rounded-full py-2.5 pl-10 pr-10 outline-none transition-all text-sm font-bold text-slate-900 placeholder:text-gray-500 placeholder:font-normal" 
@@ -152,6 +190,7 @@ export const HeaderSearch = ({ isMobile = false, onClose, whatsappNumber }: { is
                    >
                       <div className="w-10 h-10 rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden border border-gray-100">
                          {product.images?.[0] ? (
+                           // eslint-disable-next-line @next/next/no-img-element
                            <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover" />
                          ) : (
                            <div className="w-full h-full flex items-center justify-center text-gray-300"><Search size={14}/></div>
@@ -191,7 +230,7 @@ export const HeaderSearch = ({ isMobile = false, onClose, whatsappNumber }: { is
                       target="_blank" 
                       className="block w-full bg-[#0A2540] text-white py-3 rounded-xl font-bold text-sm hover:scale-[1.02] transition-transform flex items-center justify-center gap-2"
                     >
-                       Start Request <MessageCircle size={16} />
+                        Start Request <MessageCircle size={16} />
                     </a>
                  </div>
                )

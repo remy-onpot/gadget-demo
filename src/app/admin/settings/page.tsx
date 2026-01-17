@@ -6,13 +6,14 @@ import { updateSiteSetting } from '@/app/admin/actions';
 import { Database } from '@/lib/database.types'; 
 import { Save, Loader2, Settings as SettingsIcon, MessageSquare, Upload, Trash2, Globe, Clock, ImageIcon, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/utils'; // ✅ Import helper
 
-type Setting = Database['public']['Tables']['site_settings']['Row'];
+type SettingRow = Database['public']['Tables']['site_settings']['Row'];
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<Setting[]>([]);
+  const [settings, setSettings] = useState<SettingRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploadingKey, setUploadingKey] = useState<string | null>(null); // Track which setting is uploading
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null); 
   
   const [isPending, startTransition] = useTransition();
 
@@ -29,12 +30,13 @@ export default function SettingsPage() {
   const handleSave = () => {
     startTransition(async () => {
         try {
+            // Save all settings in parallel
             await Promise.all(
                 settings.map(s => updateSiteSetting(s.key, s.value))
             );
             toast.success("All settings saved!");
-        } catch (e: any) {
-            toast.error("Error: " + e.message);
+        } catch (e: unknown) { // ✅ Safe Error Handling
+            toast.error("Error: " + getErrorMessage(e));
         }
     });
   };
@@ -49,7 +51,7 @@ export default function SettingsPage() {
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `logo-${Date.now()}.${fileExt}`;
-      const filePath = `branding/${fileName}`; // Save in 'branding' folder inside bucket
+      const filePath = `branding/${fileName}`; 
 
       // Upload to 'marketing' bucket
       const { error: uploadError } = await supabase.storage
@@ -65,8 +67,8 @@ export default function SettingsPage() {
       // Update State immediately
       updateValue(key, publicUrl);
       toast.success("Logo uploaded! Don't forget to click Save.");
-    } catch (e: any) {
-      toast.error("Upload failed: " + e.message);
+    } catch (e: unknown) { // ✅ Safe Error Handling
+      toast.error("Upload failed: " + getErrorMessage(e));
     } finally {
       setUploadingKey(null);
     }
@@ -107,6 +109,7 @@ export default function SettingsPage() {
                  <div className="flex items-center gap-4 mt-3">
                     <div className="w-20 h-20 bg-white border border-dashed border-gray-300 rounded-lg flex items-center justify-center overflow-hidden relative">
                        {setting.value ? (
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img src={setting.value} alt="Logo" className="w-full h-full object-contain p-1" />
                        ) : (
                           <ImageIcon className="text-gray-300" />

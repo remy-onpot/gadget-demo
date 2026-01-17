@@ -1,35 +1,60 @@
-import { createClient } from '@/lib/supabase-server'; // ✅ Fixed Import
+import { createClient } from '@/lib/supabase-server';
 import { unstable_cache } from 'next/cache';
+import { Database } from '@/lib/database.types';
+
+// 1. DEFINE TYPES
+type VariantSpecs = Database['public']['Tables']['product_variants']['Row']['specs'];
+
+// Define the shape returned by the specific select query
+interface ProductWithSpecs {
+  variants: {
+    specs: VariantSpecs;
+  }[];
+}
 
 export type FilterOption = {
   key: string;
   values: string[];
 };
 
-// 1. Internal Fetcher (The Heavy Lifting)
+// 2. Internal Fetcher (The Heavy Lifting)
 const getCategoryFiltersInternal = async (categorySlug: string) => {
-  // ✅ Create the client inside the function (Server Component compatible)
   const supabase = await createClient();
 
   // Fetch all active products + variants in this category
-  const { data: products } = await supabase
+  const { data, error } = await supabase
     .from('products')
     .select('variants:product_variants(specs)')
     .eq('category', categorySlug)
     .eq('is_active', true);
 
-  if (!products) return [];
+  if (error) {
+    console.error("Error fetching filters:", error);
+    return [];
+  }
+  
+  if (!data) return [];
+
+  // ✅ Cast the raw data to our specific shape
+  const products = data as unknown as ProductWithSpecs[];
 
   // Aggregate Attributes
   const rawStats: Record<string, Set<string>> = {};
 
   products.forEach((p) => {
-    p.variants.forEach((v: any) => {
-      const specs = v.specs || {};
+    p.variants.forEach((v) => {
+      // ✅ Cast generic JSON to a Record we can iterate
+      const specs = (v.specs as Record<string, unknown>) || {};
+      
       Object.entries(specs).forEach(([key, val]) => {
+        // Skip null/undefined values
+        if (val === null || val === undefined) return;
+
         // Normalize keys (e.g. "Ram" -> "RAM")
         const cleanKey = key.trim();
-        const cleanVal = String(val).trim();
+        const cleanVal = String(val).trim(); // Safe string conversion
+
+        if (!cleanVal) return;
 
         if (!rawStats[cleanKey]) {
           rawStats[cleanKey] = new Set();
@@ -48,13 +73,12 @@ const getCategoryFiltersInternal = async (categorySlug: string) => {
   return filters.sort((a, b) => a.key.localeCompare(b.key));
 };
 
-// 2. The Shielded Export
-// We use unstable_cache directly to handle the 'slug' argument correctly
+// 3. The Shielded Export
 export const getCategoryFilters = unstable_cache(
   async (slug: string) => getCategoryFiltersInternal(slug),
-  ['category-filters'], // Next.js automatically combines this with the 'slug' arg for uniqueness
+  ['category-filters'], // Base key
   {
-    tags: ['products'], // ✅ Nuke this cache when you save a product
+    tags: ['products'], // Nuke this cache when you save a product
     revalidate: 3600    // Default: 1 hour
   }
 );

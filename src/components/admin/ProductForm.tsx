@@ -4,25 +4,42 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Upload, Loader2, Trash2, 
   CheckCircle, Sparkles, Tag, Package, 
-  TrendingUp, ChevronRight, Image as ImageIcon, FileText
+  TrendingUp, ChevronRight, Image as ImageIcon, FileText, Lock
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { upsertProduct } from '@/actions/product-actions';
 
-// Types
+import { useAdminRole } from '@/hooks/useAdminRole';
+import { Database } from '@/lib/database.types';
+import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/utils';
+
+// 1. DEFINE TYPES
+type ProductRow = Database['public']['Tables']['products']['Row'];
+type VariantRowDB = Database['public']['Tables']['product_variants']['Row'];
+
+// Extend the base product to include the nested data we fetch for editing
+interface ProductWithRelations extends ProductRow {
+  product_variants: VariantRowDB[];
+}
+
 type AttributeOption = { id: string; key: string; value: string };
-type VariantRow = {
+
+// Internal UI state for a variant row
+type VariantUI = {
   id: string;
   condition: string;
   specs: Record<string, string>;
   price: number;
   stock: number;
 };
+
 type ImageItem = { id: string; url?: string; file?: File; };
 
 interface ProductFormProps {
   onClose: () => void;
-  initialData?: any; 
+  // ✅ FIX 1: Strict Input Type
+  initialData?: ProductWithRelations | null; 
 }
 
 export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
@@ -31,13 +48,14 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-    
+  const { isStaff } = useAdminRole();
+  
   // --- PARENT STATE ---
   const [images, setImages] = useState<ImageItem[]>([]);
   const [productData, setProductData] = useState({
     name: '',
     brand: '',
-    category: '', // Dynamic (string)
+    category: '', 
     description: '',
     basePrice: '',
     slug: ''
@@ -50,32 +68,30 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
   // --- MATRIX STATE (Bulk Mode) ---
   const [availableOptions, setAvailableOptions] = useState<AttributeOption[]>([]);
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string[]>>({});
-  const [generatedVariants, setGeneratedVariants] = useState<VariantRow[]>([]);
+  const [generatedVariants, setGeneratedVariants] = useState<VariantUI[]>([]);
 
-  // 0. FETCH EXISTING CATEGORIES (White-Label Logic)
+  // 0. FETCH EXISTING CATEGORIES
   useEffect(() => {
     const fetchCats = async () => {
         const { data } = await supabase.from('products').select('category');
         if (data) {
-            // Get unique categories
             const unique = Array.from(new Set(data.map(p => p.category))).filter(Boolean) as string[];
             setExistingCategories(unique.sort());
             
-            // Default to first category if creating new and list exists
             if (!initialData && unique.length > 0 && !productData.category) {
                 setProductData(prev => ({ ...prev, category: unique[0] }));
             }
         }
     };
     fetchCats();
-  }, []);
+  }, [initialData]); // Added dependency to prevent stale closures
 
   // 1. HYDRATE DATA (Edit Mode)
   useEffect(() => {
     if (initialData) {
       setProductData({
         name: initialData.name,
-        brand: initialData.brand,
+        brand: initialData.brand || '',
         category: initialData.category,
         description: initialData.description || '',
         basePrice: initialData.base_price?.toString() || '',
@@ -87,12 +103,14 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
       }
 
       if (initialData.product_variants) {
-        setGeneratedVariants(initialData.product_variants.map((v: any) => ({
+        // ✅ FIX 2: Safe mapping of DB rows to UI state
+        setGeneratedVariants(initialData.product_variants.map((v) => ({
           id: v.id,
-          condition: v.condition,
-          specs: v.specs || {},
-          price: v.price,
-          stock: v.stock
+          condition: v.condition || 'New',
+          // Safe cast for JSONB column 'specs'
+          specs: (v.specs as Record<string, string>) || {},
+          price: v.price || 0,
+          stock: v.stock || 0
         })));
       }
     }
@@ -110,7 +128,7 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
 
       if (!productData.category) return;
 
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('attribute_options')
         .select('*')
         .eq('category', productData.category)
@@ -118,13 +136,18 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
       
       if (isMounted && data) {
         setAvailableOptions(data);
+        
+        // Restore selected attributes from existing variants if editing
         if (initialData && productData.category === initialData.category && initialData.product_variants?.[0]?.specs) {
-           const firstVariantSpecs = initialData.product_variants[0].specs;
+           const firstVariantSpecs = initialData.product_variants[0].specs as Record<string, string>;
            const restoredAttributes: Record<string, string[]> = {};
-           Object.entries(firstVariantSpecs).forEach(([key, val]) => {
-              restoredAttributes[key] = [val as string];
-           });
-           setSelectedAttributes(restoredAttributes);
+           
+           if (firstVariantSpecs) {
+               Object.entries(firstVariantSpecs).forEach(([key, val]) => {
+                 restoredAttributes[key] = [val];
+               });
+               setSelectedAttributes(restoredAttributes);
+           }
         }
       }
     };
@@ -190,9 +213,13 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
 
   const generateMatrix = () => {
     const keys = Object.keys(selectedAttributes).filter(k => selectedAttributes[k].length > 0);
-    if (keys.length === 0) return alert("Please select at least one attribute.");
+    if (keys.length === 0) {
+        toast.error("Please select at least one attribute.");
+        return;
+    }
 
-    const combine = ([head, ...tail]: string[]): any[] => {
+    // ✅ FIX 3: Strict Typing for Recursion
+    const combine = ([head, ...tail]: string[]): Record<string, string>[] => {
       if (!head) return [{}];
       const tailCombos = combine(tail);
       return selectedAttributes[head].flatMap(val => {
@@ -201,13 +228,15 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
     };
 
     const combinations = combine(keys);
-    const newRows: VariantRow[] = combinations.map((combo, idx) => {
+    
+    const newRows: VariantUI[] = combinations.map((combo, idx) => {
+      // Find case-insensitive 'condition' key
       const conditionKey = Object.keys(combo).find(k => k.toLowerCase() === 'condition');
       const condition = conditionKey ? combo[conditionKey] : 'New';
       
       const specs: Record<string, string> = {};
       Object.entries(combo).forEach(([k, v]) => {
-         if (k.toLowerCase() !== 'condition') specs[k] = v as string;
+         if (k.toLowerCase() !== 'condition') specs[k] = v;
       });
 
       return {
@@ -232,10 +261,14 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
   };
 
   const handleFinalSave = async () => {
-    if (generatedVariants.length === 0) return alert("Please generate variants first!");
+    if (generatedVariants.length === 0) {
+        toast.error("Please generate variants first!");
+        return;
+    }
     setLoading(true);
     
     try {
+      // 1. Upload Images
       const finalImageUrls = await Promise.all(
         images.map(async (img) => {
            if (img.file) {
@@ -250,33 +283,35 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
         })
       );
 
+      // 2. Prepare Product Payload
       const productPayload = {
-        id: initialData?.id,
+        id: initialData?.id, // undefined if new
         name: productData.name,
         slug: productData.slug + (initialData ? '' : `-${Math.floor(Math.random() * 1000)}`),
         brand: productData.brand,
-        category: productData.category.toLowerCase(), // Normalize
+        category: productData.category.toLowerCase(), 
         description: productData.description,
         base_price: Number(productData.basePrice),
         base_images: finalImageUrls,
         is_active: true
       };
 
+      // 3. Prepare Variant Payload (omit product_id, server action handles it)
       const variantsPayload = generatedVariants.map(v => ({
         condition: v.condition,
-        specs: v.specs,
+        specs: v.specs, // Supabase handles Record<string,string> -> Json conversion
         price: v.price,
         stock: v.stock
       }));
 
       await upsertProduct(productPayload, variantsPayload);
 
-      alert(initialData ? "Product Updated!" : "Product Published!");
+      toast.success(initialData ? "Product Updated!" : "Product Published!");
       onClose();
 
-    } catch (e: any) {
+    } catch (e: unknown) { // ✅ FIX 4: Safe Error Handling
       console.error(e);
-      alert("Error: " + e.message);
+      toast.error("Error: " + getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -335,7 +370,8 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
                   <div className="grid grid-cols-3 gap-3">
                     {images.map((img, i) => (
                       <div key={img.id} className="aspect-square bg-slate-100 rounded-xl relative group overflow-hidden border border-slate-200">
-                        <img src={img.file ? URL.createObjectURL(img.file) : img.url} className="w-full h-full object-cover" />
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={img.file ? URL.createObjectURL(img.file) : img.url} className="w-full h-full object-cover" alt="product preview" />
                         <button onClick={(e) => { e.stopPropagation(); setImages(prev => prev.filter((_, idx) => idx !== i)); }} className="absolute top-1 right-1 bg-white/90 text-red-600 rounded p-1 opacity-0 group-hover:opacity-100 transition"><Trash2 size={12}/></button>
                       </div>
                     ))}
@@ -388,7 +424,22 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
                   </div>
                   <div className="w-full">
                     <label className="input-label">Base Price</label>
-                    <div className="relative group w-full"><span className="absolute left-4 top-3.5 text-sm font-black text-slate-500">GHS</span><input type="number" className={`${inputBaseClass} pl-14`} value={productData.basePrice} onChange={e => setProductData({...productData, basePrice: e.target.value})} /></div>
+                    <div className="relative group w-full">
+                      <span className="absolute left-4 top-3.5 text-sm font-black text-slate-500">GHS</span>
+                      <input 
+                        type="number" 
+                        className={`${inputBaseClass} pl-14 ${isStaff ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`} 
+                        value={productData.basePrice} 
+                        onChange={e => setProductData({...productData, basePrice: e.target.value})} 
+                        disabled={isStaff}
+                      />
+                      {isStaff && <Lock className="absolute right-4 top-3.5 text-red-400" size={16} />}
+                    </div>
+                    {isStaff && (
+                      <p className="text-[10px] text-red-500 font-bold mt-1 flex items-center gap-1">
+                        <Lock size={10}/> Price editing is restricted to Owners.
+                      </p>
+                    )}
                   </div>
                   
                   <div className="col-span-12 w-full">
@@ -445,7 +496,7 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
                                 const isSelected = selectedAttributes[key]?.includes(opt.value);
                                 return (
                                     <button key={opt.id} onClick={() => toggleAttribute(key, opt.value)} className={`px-3 py-1.5 text-xs font-bold rounded-lg border-2 transition ${isSelected ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-400'}`}>
-                                         {opt.value}
+                                             {opt.value}
                                     </button>
                                 );
                              })}

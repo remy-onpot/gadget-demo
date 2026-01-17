@@ -4,7 +4,7 @@ export interface FilterRule {
   key: string; 
   operator: 'eq' | 'neq' | 'gt' | 'lt' | 'gte' | 'lte' | 'contains';
   value: string | number;
-  field?: string; // Add optional legacy support
+  field?: string; // Legacy support
 }
 
 export const matchesRules = (product: Product, rules: FilterRule[] | null): boolean => {
@@ -12,44 +12,60 @@ export const matchesRules = (product: Product, rules: FilterRule[] | null): bool
 
   return rules.every(rule => {
     // 1. SAFETY CHECK: Get the property name safely
-    // We check for 'key' (new format) OR 'field' (old format)
     const propertyName = rule.key || rule.field;
 
-    // If neither exists, this rule is broken. Skip it (return true) so the app doesn't crash.
+    // If neither exists, skip (fail open to prevent crashes)
     if (!propertyName) return true;
 
-    let productValue: any;
+    let productValue: string | number | boolean | undefined | null;
 
     // 2. Handle nested keys like 'specs.Storage'
     if (propertyName.startsWith('specs.')) {
       const specKey = propertyName.split('.')[1]; // e.g., 'Storage'
-      const specs = product.specs as Record<string, any>;
+      const specs = product.specs || {}; // Specs might be undefined on the object
       
       // Case-insensitive lookup: Find 'storage', 'Storage', 'STORAGE'
-      const foundKey = Object.keys(specs || {}).find(k => k.toLowerCase() === specKey.toLowerCase());
+      const foundKey = Object.keys(specs).find(k => k.toLowerCase() === specKey.toLowerCase());
+      
+      // Safe access: specs is defined in types.ts as Record<string, string|number|boolean>
       productValue = foundKey ? specs[foundKey] : undefined;
+
     } else {
-      // Standard keys like 'price', 'brand'
-      productValue = (product as any)[propertyName];
+      
+      const safeProduct = product as unknown as Record<string, unknown>;
+      
+      // We only care if it's a primitive value we can compare
+      const val = safeProduct[propertyName];
+      if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
+          productValue = val;
+      } else {
+          productValue = undefined;
+      }
     }
 
+    // If value is missing, it fails the rule
     if (productValue === undefined || productValue === null) return false;
 
-    // 3. Normalize values for comparison
+    // 4. Normalize values for comparison
     const valA = String(productValue).toLowerCase();
     const valB = String(rule.value).toLowerCase();
+    
+    // Numeric comparison preparation
     const numA = Number(productValue);
     const numB = Number(rule.value);
 
-    // 4. Run the operator check
+    // 5. Run the operator check
     switch (rule.operator) {
       case 'eq': return valA === valB;
       case 'neq': return valA !== valB;
       case 'contains': return valA.includes(valB);
+      
+      // Numeric Checks (Ensure both are valid numbers)
       case 'gt': return !isNaN(numA) && !isNaN(numB) && numA > numB;
       case 'lt': return !isNaN(numA) && !isNaN(numB) && numA < numB;
       case 'gte': return !isNaN(numA) && !isNaN(numB) && numA >= numB;
       case 'lte': return !isNaN(numA) && !isNaN(numB) && numA <= numB;
+      
       default: return false;
     }
   });

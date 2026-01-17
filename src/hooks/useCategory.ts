@@ -1,7 +1,17 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Product, CategorySection, FilterRule } from '@/lib/types'; // ✅ Import shared types
+import { Product, CategorySection, FilterRule } from '@/lib/types';
 import { matchesRules } from '@/lib/filter-engine';
+import { Database } from '@/lib/database.types';
+
+// 1. DEFINE RAW DB TYPES
+type ProductRow = Database['public']['Tables']['products']['Row'];
+type VariantRow = Database['public']['Tables']['product_variants']['Row'];
+
+// Define the "Raw" shape returned by the join query
+interface RawProduct extends ProductRow {
+  variants: Pick<VariantRow, 'price'>[]; // We only fetch price in the select
+}
 
 // Helper type for the hook's return value
 export interface SectionWithData extends CategorySection {
@@ -42,32 +52,47 @@ export const useCategory = (slug: string) => {
 
         if (prodError) throw prodError;
 
-        // 3. Normalize Data
-        const cleanProducts = (productsRaw || []).map((p: any) => {
-           const prices = p.variants?.map((v: any) => v.price) || [];
+        // 3. Normalize Data (Strictly Typed)
+        // ✅ FIX: Use 'RawProduct' instead of 'any'
+        const rawItems = (productsRaw as unknown as RawProduct[]) || [];
+
+       const cleanProducts: Product[] = rawItems.map((p) => {
+           const prices = p.variants?.map((v) => v.price) || [];
            const minPrice = prices.length > 0 ? Math.min(...prices) : (p.base_price || 0);
-           return { 
-             ...p, 
+           
+           return {
+             id: p.id,
+             name: p.name,
+             slug: p.slug,
+             brand: p.brand || 'Generic',
+             category: p.category,
+             
+             description: p.description || undefined, 
+             
              price: minPrice, 
-             images: p.images || [], 
-             variants: p.variants || []
-           } as Product;
+             originalPrice: undefined, 
+             images: p.base_images || [], 
+             specs: {}, 
+             variants: [], 
+             isActive: p.is_active || false,
+             isFeatured: p.is_featured || false
+           };
         });
 
         setAllProducts(cleanProducts);
 
-        // 4. Process Sections (The Fix)
+        // 4. Process Sections
         let processedSections: CategorySection[] = [];
 
         if (layoutData && layoutData.length > 0) {
-            // ✅ FIX: "Double Cast" + Fallback for sort_order
             processedSections = layoutData.map(row => ({
                 id: row.id,
                 category_slug: row.category_slug,
                 title: row.title,
                 section_type: row.section_type as 'product_row' | 'brand_row',
+                // ✅ FIX: Cast JSON to strict FilterRule[]
                 filter_rules: (row.filter_rules as unknown as FilterRule[]) || [],
-                sort_order: row.sort_order || 0, // <--- Handles null from DB
+                sort_order: row.sort_order || 0, 
                 is_active: row.is_active ?? true 
             }));
         } else {
@@ -92,9 +117,10 @@ export const useCategory = (slug: string) => {
         // Remove empty sections
         setSections(hydratedSections.filter(s => s.products.length > 0));
 
-      } catch (err: any) {
+      } catch (err: unknown) { // ✅ FIX: Safe error handling
         console.error("Category Load Error:", err);
-        setError(err.message);
+        const msg = err instanceof Error ? err.message : "Failed to load category";
+        setError(msg);
       } finally {
         setLoading(false);
       }

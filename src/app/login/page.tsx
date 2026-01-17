@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { Loader2, AlertCircle, CheckCircle, Mail, Lock, User, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import { getErrorMessage } from '@/lib/utils';
+
 
 export default function AuthPage() {
   const router = useRouter();
@@ -56,8 +58,9 @@ export default function AuthPage() {
         router.refresh();
         router.push('/admin/inventory');
       }
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message });
+    } catch (err: unknown) {
+      
+      setMessage({ type: 'error', text: getErrorMessage(err) });
     } finally {
       setLoading(false);
     }
