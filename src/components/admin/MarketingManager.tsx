@@ -1,29 +1,45 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import { Banner, BANNER_RULES, BannerSlot } from '@/lib/types';
-import { Trash2, AlertCircle, CheckCircle, Loader2, Link as LinkIcon, ImagePlus, Palette, LayoutTemplate } from 'lucide-react';
+import React, { useState, useEffect, useTransition } from 'react';
+import { supabase } from '@/lib/supabase'; // Client SDK for Storage Uploads
+import { createBanner, deleteBanner, toggleBannerStatus } from '@/app/admin/(dashboard)/actions'; // ✅ Server Actions
+import { Database } from '@/lib/database.types';
+import { Trash2, AlertCircle, CheckCircle, Loader2, Link as LinkIcon, ImagePlus, Palette, Eye, EyeOff } from 'lucide-react';
 import Image from 'next/image';
+import { toast } from 'sonner';
+
+// --- TYPES ---
+type Banner = Database['public']['Tables']['banners']['Row'];
+type BannerSlot = string; // Or specific union type if strict
 
 // --- CONFIGURATION ---
-const SLOT_GROUPS: Record<string, BannerSlot[]> = {
-  'Homepage Hero': ['main_hero', 'side_top', 'side_bottom'],
-  'Featured Sections': ['tile_new', 'tile_student', 'flash'], 
-  'Store Info': ['branch_slider', 'brand_hero']
+const SLOT_GROUPS: Record<string, string[]> = {
+  'Homepage Hero': ['hero', 'side_top', 'side_bottom'], // Updated to match your schema defaults
+  'Featured Sections': ['grid', 'flash'], 
+  'Store Info': ['sidebar']
 };
 
-const RICH_CONTENT_SLOTS: BannerSlot[] = ['main_hero', 'side_top', 'side_bottom', 'brand_hero'];
+const RICH_CONTENT_SLOTS = ['hero', 'side_top', 'side_bottom', 'grid'];
+
+// Rules for validation/UI hints
+const BANNER_RULES: Record<string, { label: string; width: number; height: number; description: string }> = {
+    hero: { label: 'Main Hero', width: 1200, height: 600, description: 'Main slider on homepage.' },
+    side_top: { label: 'Sidebar Top', width: 400, height: 300, description: 'Right side of hero.' },
+    side_bottom: { label: 'Sidebar Bottom', width: 400, height: 300, description: 'Right side of hero.' },
+    grid: { label: 'Grid Tile', width: 600, height: 600, description: 'Square promo tiles.' },
+    sidebar: { label: 'Vertical Banner', width: 300, height: 600, description: 'Tall banner for shop pages.' },
+    flash: { label: 'Flash Sale', width: 1200, height: 200, description: 'Slim banner.' },
+};
 
 export const MarketingManager = () => {
   const [banners, setBanners] = useState<Banner[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<BannerSlot>('brand_hero'); 
+  const [selectedSlot, setSelectedSlot] = useState<string>('hero');
+  const [loading, setLoading] = useState(true);
   
   // FORM STATE
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState('');
   
   // RICH CONTENT STATE
   const [formData, setFormData] = useState({
@@ -35,86 +51,106 @@ export const MarketingManager = () => {
     bg_color: '#0A2540'
   });
 
-  const rule = BANNER_RULES[selectedSlot];
+  const [isPending, startTransition] = useTransition();
+
+  const rule = BANNER_RULES[selectedSlot] || { label: selectedSlot, width: 0, height: 0, description: '' };
   const isRichContent = RICH_CONTENT_SLOTS.includes(selectedSlot);
 
+  // 1. FETCH BANNERS
   useEffect(() => {
     fetchBanners();
   }, []);
 
   const fetchBanners = async () => {
+    // Read-only can use client SDK for speed, or a Server Action if RLS is strict
     const { data } = await supabase
       .from('banners')
       .select('*')
       .order('created_at', { ascending: false });
       
-    // ✅ FIX 1: Safe Casting (DB JSON -> App Interface)
-    if (data) {
-        setBanners(data as unknown as Banner[]);
-    }
+    if (data) setBanners(data);
+    setLoading(false);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setError('');
     const objectUrl = URL.createObjectURL(file);
     setImageFile(file);
     setPreviewUrl(objectUrl);
   };
 
+  // 2. CREATE BANNER (Upload Client -> DB Server Action)
   const handleUpload = async () => {
-    if (!imageFile || !formData.link_url) return setError("Image and Link are required");
+    if (!imageFile || !formData.link_url) return toast.error("Image and Link are required");
     
-    if (isRichContent) {
-       if (!formData.title) return setError("This slot requires a Title to display correctly.");
-    }
-
     setUploading(true);
 
     try {
-      const fileName = `${selectedSlot}-${Date.now()}.${imageFile.name.split('.').pop()}`;
+      // A. Upload Image (Client Side - Supabase Storage)
+      const fileExt = imageFile.name.split('.').pop();
+      const fileName = `${selectedSlot}-${Date.now()}.${fileExt}`;
       const { error: upErr } = await supabase.storage.from('marketing').upload(fileName, imageFile);
+      
       if (upErr) throw upErr;
 
       const { data: publicUrlData } = supabase.storage.from('marketing').getPublicUrl(fileName);
       const publicUrl = publicUrlData.publicUrl;
 
-      const { data, error } = await supabase.from('banners').insert({
-        slot: selectedSlot,
-        image_url: publicUrl,
-        is_active: true,
-        title: formData.title,
-        description: formData.description,
-        label: formData.label,
-        bg_color: formData.bg_color,
-        cta_text: formData.cta_text,
-        link_url: formData.link_url
-      }).select().single();
+      // B. Create Record (Server Action)
+      startTransition(async () => {
+          try {
+            await createBanner({
+                slot: selectedSlot,
+                image_url: publicUrl,
+                is_active: true,
+                title: formData.title,
+                description: formData.description,
+                label: formData.label,
+                bg_color: formData.bg_color,
+                cta_text: formData.cta_text,
+                link_url: formData.link_url
+            });
 
-      if (error) throw error;
-      
-      // ✅ FIX 2: Safe Casting for Single Item
-      setBanners([data as unknown as Banner, ...banners]);
-      
-      // Reset Form
-      setImageFile(null);
-      setPreviewUrl('');
-      setFormData({ title: '', description: '', label: '', cta_text: 'Shop Now', link_url: '', bg_color: '#0A2540' });
-    } catch (e: unknown) {
-      // ✅ FIX 3: Safe Error Handling
-      const msg = e instanceof Error ? e.message : "An unknown error occurred";
-      setError(msg);
+            toast.success("Asset published successfully!");
+            
+            // Cleanup
+            setImageFile(null);
+            setPreviewUrl('');
+            setFormData({ title: '', description: '', label: '', cta_text: 'Shop Now', link_url: '', bg_color: '#0A2540' });
+            
+            // Refresh List
+            fetchBanners();
+          } catch (e: any) {
+             toast.error(e.message);
+          }
+      });
+
+    } catch (e: any) {
+      toast.error(e.message || "Upload failed");
     } finally {
       setUploading(false);
     }
   };
 
-  const deleteBanner = async (id: string) => {
-    if(!confirm("Remove this asset? It will disappear from the homepage immediately.")) return;
-    setBanners(banners.filter(b => b.id !== id));
-    await supabase.from('banners').delete().eq('id', id);
+  // 3. DELETE BANNER
+  const handleDelete = async (id: string) => {
+    if(!confirm("Remove this asset?")) return;
+    startTransition(async () => {
+        await deleteBanner(id);
+        setBanners(prev => prev.filter(b => b.id !== id));
+        toast.success("Deleted");
+    });
+  };
+
+  // 4. TOGGLE STATUS
+  const handleToggle = async (id: string, current: boolean) => {
+      startTransition(async () => {
+          await toggleBannerStatus(id, !current);
+          setBanners(prev => prev.map(b => b.id === id ? { ...b, is_active: !current } : b));
+          toast.success(current ? "Banner hidden" : "Banner activated");
+      });
   };
 
   // Helper to render asset cards
@@ -129,7 +165,7 @@ export const MarketingManager = () => {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {assets.map((b) => (
-            <div key={b.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden group hover:border-orange-200 transition-all">
+            <div key={b.id} className={`bg-white rounded-2xl border shadow-sm overflow-hidden group transition-all ${!b.is_active ? 'opacity-60 grayscale' : 'hover:border-orange-200'}`}>
               {/* Image Preview Area */}
               <div 
                 className="h-40 relative flex items-center justify-center overflow-hidden"
@@ -139,13 +175,13 @@ export const MarketingManager = () => {
                     <Image 
                         src={b.image_url} 
                         fill 
-                        className={b.slot === 'brand_hero' ? "object-cover" : "object-contain p-4"} 
+                        className={b.slot === 'hero' ? "object-cover" : "object-contain p-4"} 
                         alt="Banner" 
                     />
                  </div>
                  {/* Slot Badge */}
                  <div className="absolute top-2 left-2 bg-black/70 backdrop-blur text-white text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider z-10">
-                    {BANNER_RULES[b.slot]?.label}
+                    {BANNER_RULES[b.slot]?.label || b.slot}
                  </div>
                  {b.title && (
                     <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent">
@@ -161,8 +197,14 @@ export const MarketingManager = () => {
                  </div>
 
                  <div className="pt-2 flex justify-between items-center border-t border-gray-50">
-                    <span className="text-[10px] text-gray-400 font-mono">ID: {b.id.slice(0,6)}</span>
-                    <button onClick={() => deleteBanner(b.id)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-colors">
+                    <button 
+                        onClick={() => handleToggle(b.id, b.is_active || false)}
+                        className={`text-xs font-bold px-2 py-1 rounded ${b.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}
+                    >
+                        {b.is_active ? 'Active' : 'Hidden'}
+                    </button>
+                    
+                    <button onClick={() => handleDelete(b.id)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-colors">
                       <Trash2 size={16} />
                     </button>
                  </div>
@@ -174,8 +216,10 @@ export const MarketingManager = () => {
     );
   };
 
+  if (loading) return <div className="p-20 text-center"><Loader2 className="animate-spin inline text-slate-300"/></div>;
+
   return (
-    <div className="space-y-12">
+    <div className="space-y-12 pb-20">
       
       {/* 1. EDITOR SECTION */}
       <div className="bg-white p-6 lg:p-8 rounded-[2rem] border border-gray-200 shadow-sm flex flex-col lg:flex-row gap-10">
@@ -194,14 +238,14 @@ export const MarketingManager = () => {
                       {slots.map(slotKey => (
                         <button
                           key={slotKey}
-                          onClick={() => { setSelectedSlot(slotKey as BannerSlot); setPreviewUrl(''); setError(''); }}
+                          onClick={() => { setSelectedSlot(slotKey); setPreviewUrl(''); }}
                           className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
                             selectedSlot === slotKey 
                             ? 'bg-slate-900 text-white border-slate-900 shadow-lg scale-105' 
                             : 'bg-white text-slate-600 border-gray-200 hover:bg-gray-50'
                           }`}
                         >
-                          {BANNER_RULES[slotKey].label.split(':')[1] || BANNER_RULES[slotKey].label}
+                          {BANNER_RULES[slotKey]?.label || slotKey}
                         </button>
                       ))}
                     </div>
@@ -213,17 +257,17 @@ export const MarketingManager = () => {
                <AlertCircle size={16} className="mt-0.5 shrink-0"/>
                <div>
                   <strong>Requirement:</strong> {rule.description} <br/>
-                  Size: <strong>{rule.width} x {rule.height}px</strong> {rule.aspectRatio && `(${rule.aspectRatio})`}
+                  Size: <strong>{rule.width} x {rule.height}px</strong>
                </div>
             </div>
           </div>
 
-          {/* B. CONTENT FIELDS (Conditional based on slot) */}
+          {/* B. CONTENT FIELDS */}
           <div>
              <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">2. Customize Content</h2>
              <div className="space-y-4">
                 
-                {/* Title & Desc (For Main Hero & Brand Hero) */}
+                {/* Title & Desc (Rich Content Only) */}
                 {isRichContent && (
                    <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100 space-y-4 animate-in slide-in-from-left-2">
                       <div>
@@ -256,22 +300,21 @@ export const MarketingManager = () => {
                           </div>
                       </div>
                       
-                      {!['brand_hero'].includes(selectedSlot) && (
-                        <div>
-                            <label className="text-xs font-bold text-slate-500 uppercase mb-2 block flex items-center gap-2">
-                                <Palette size={14}/> Card Background Color
-                            </label>
-                            <div className="flex gap-3 items-center">
-                                <input 
-                                type="color" 
-                                value={formData.bg_color} 
-                                onChange={e => setFormData({...formData, bg_color: e.target.value})}
-                                className="w-10 h-10 rounded-lg cursor-pointer border-0 p-0"
-                                />
-                                <span className="text-xs font-mono text-gray-500 bg-white px-2 py-1 rounded border">{formData.bg_color}</span>
-                            </div>
-                        </div>
-                      )}
+                      {/* Background Color Picker */}
+                      <div>
+                           <label className="text-xs font-bold text-slate-500 uppercase mb-2 block flex items-center gap-2">
+                               <Palette size={14}/> Background Color
+                           </label>
+                           <div className="flex gap-3 items-center">
+                               <input 
+                               type="color" 
+                               value={formData.bg_color} 
+                               onChange={e => setFormData({...formData, bg_color: e.target.value})}
+                               className="w-10 h-10 rounded-lg cursor-pointer border-0 p-0"
+                               />
+                               <span className="text-xs font-mono text-gray-500 bg-white px-2 py-1 rounded border">{formData.bg_color}</span>
+                           </div>
+                       </div>
                    </div>
                 )}
 
@@ -299,7 +342,7 @@ export const MarketingManager = () => {
            
            <div 
              className="flex-1 min-h-[400px] border-2 border-dashed border-gray-200 rounded-3xl bg-gray-50 relative flex flex-col items-center justify-center overflow-hidden hover:bg-white hover:border-orange-300 transition-all group"
-             style={{ backgroundColor: !['brand_hero'].includes(selectedSlot) ? formData.bg_color : '#0f172a' }}
+             style={{ backgroundColor: isRichContent ? formData.bg_color : '#f8fafc' }}
            >
               <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer z-20" onChange={handleFileSelect} />
               
@@ -307,9 +350,9 @@ export const MarketingManager = () => {
                  <div className="relative w-full h-full flex items-center justify-center">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img 
-                        src={previewUrl} 
-                        className={selectedSlot === 'brand_hero' ? "w-full h-full object-cover opacity-80" : "max-w-[80%] max-h-[80%] object-contain drop-shadow-xl z-10"} 
-                        alt="Preview"
+                       src={previewUrl} 
+                       className={selectedSlot === 'hero' ? "w-full h-full object-cover opacity-80" : "max-w-[80%] max-h-[80%] object-contain drop-shadow-xl z-10"} 
+                       alt="Preview"
                     />
                     
                     {/* Live Text Preview Overlay */}
@@ -333,23 +376,17 @@ export const MarketingManager = () => {
                        <ImagePlus size={32} />
                     </div>
                     <p className="font-bold text-slate-600">Click to Select Image</p>
-                    {selectedSlot === 'brand_hero' && <p className="text-xs text-orange-600 mt-2 font-bold">Recommended: Wide Banner Image</p>}
+                    <p className="text-xs text-gray-400 mt-2">Supports JPG, PNG, WEBP</p>
                  </div>
               )}
            </div>
 
-           {error && (
-              <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-bold flex items-center gap-2 animate-in slide-in-from-bottom-2">
-                 <AlertCircle size={18} /> {error}
-              </div>
-           )}
-
            <button 
              onClick={handleUpload} 
-             disabled={!imageFile || uploading}
+             disabled={!imageFile || uploading || isPending}
              className="w-full py-4 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-slate-900/10 flex items-center justify-center gap-2"
            >
-             {uploading ? <Loader2 className="animate-spin" /> : 'Publish Asset'}
+             {uploading || isPending ? <Loader2 className="animate-spin" /> : 'Publish Asset'}
            </button>
         </div>
       </div>
@@ -357,10 +394,9 @@ export const MarketingManager = () => {
       {/* 2. LIVE ASSETS */}
       <div className="space-y-2">
          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Active Assets</h2>
-         {renderAssetList('Homepage Hero Section', (b) => ['main_hero', 'side_top', 'side_bottom'].includes(b.slot))}
-         {renderAssetList('Store & Brand Info', (b) => ['brand_hero'].includes(b.slot))}
-         {renderAssetList('Featured Sections', (b) => ['tile_new', 'tile_student', 'flash'].includes(b.slot))}
-         {renderAssetList('Store Info', (b) => ['branch_slider'].includes(b.slot))}
+         {renderAssetList('Homepage Hero Section', (b) => ['hero', 'side_top', 'side_bottom'].includes(b.slot))}
+         {renderAssetList('Featured Sections', (b) => ['grid', 'flash'].includes(b.slot))}
+         {renderAssetList('Store Info', (b) => ['sidebar'].includes(b.slot))}
       </div>
 
     </div>

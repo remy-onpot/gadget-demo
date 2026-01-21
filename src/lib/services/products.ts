@@ -11,21 +11,10 @@ type CategoryMetaRow = Database['public']['Tables']['category_metadata']['Row'];
 type SectionRow = Database['public']['Tables']['category_sections']['Row'];
 
 // 1. QUERY RETURN SHAPES
-// A. Full Details (Product Page, Featured)
-type ProductWithFullVariants = ProductRow & {
-  variants: VariantRow[];
-};
-
-// B. Lightweight (Feeds, Grids, Search) - Only fetches price to save bandwidth
-type ProductWithPrice = ProductRow & {
-  variants: Pick<VariantRow, 'price'>[];
-};
+type ProductWithFullVariants = ProductRow & { variants: VariantRow[]; };
+type ProductWithPrice = ProductRow & { variants: Pick<VariantRow, 'price'>[]; };
 
 // 2. MAPPERS
-
-/**
- * MAPPER A: For Single Product Pages (Full Detail)
- */
 const mapToProduct = (raw: ProductWithFullVariants): Product => {
   const prices = raw.variants?.map((v) => v.price) || [];
   const minPrice = prices.length > 0 ? Math.min(...prices) : (raw.base_price || 0);
@@ -36,13 +25,12 @@ const mapToProduct = (raw: ProductWithFullVariants): Product => {
     slug: raw.slug,
     brand: raw.brand || 'Generic',
     category: raw.category as Category,
-    description: raw.description || undefined, // ✅ Fix Null -> Undefined
+    description: raw.description || undefined,
     price: minPrice,
-    originalPrice: raw.base_price || undefined, // ✅ Fix Null -> Undefined
+    originalPrice: raw.base_price || undefined,
     images: raw.base_images || [],
     isFeatured: raw.is_featured ?? false,
     isActive: raw.is_active ?? false,
-    // Full Variant Mapping
     variants: raw.variants.map(v => ({
       id: v.id,
       product_id: raw.id,
@@ -56,10 +44,6 @@ const mapToProduct = (raw: ProductWithFullVariants): Product => {
   };
 };
 
-/**
- * MAPPER B: For Lists/Grids (Lightweight)
- * Ignores stock/condition details to prevent crashes when they aren't fetched.
- */
 const mapToListProduct = (raw: ProductWithPrice): Product => {
   const prices = raw.variants?.map((v) => v.price) || [];
   const minPrice = prices.length > 0 ? Math.min(...prices) : (raw.base_price || 0);
@@ -76,7 +60,7 @@ const mapToListProduct = (raw: ProductWithPrice): Product => {
     images: raw.base_images || [],
     isFeatured: raw.is_featured ?? false,
     isActive: raw.is_active ?? false,
-    variants: [], // ✅ Empty variants for lists (Optimization)
+    variants: [],
     specs: {}
   };
 };
@@ -84,21 +68,25 @@ const mapToListProduct = (raw: ProductWithPrice): Product => {
 // ==========================================
 // 1. FEATURED PRODUCTS (Full Detail)
 // ==========================================
-const getFeaturedInternal = async (): Promise<Product[]> => {
+const getFeaturedInternal = async (storeId: string): Promise<Product[]> => {
   const supabase = createStaticClient();
   const { data } = await supabase
     .from('products')
-    .select('*, variants:product_variants(*)') // Fetch EVERYTHING
+    .select('*, variants:product_variants(*)')
+    .eq('store_id', storeId) // ✅ Filter by Store
     .eq('is_active', true)
     .eq('is_featured', true)
     .limit(8);
 
   if (!data) return [];
-  // Use Full Mapper
   return (data as unknown as ProductWithFullVariants[]).map(mapToProduct);
 };
 
-export const getFeaturedProducts = cacheService(getFeaturedInternal, ['featured-products'], { tags: ['products'] });
+export const getFeaturedProducts = cacheService(
+  async (storeId: string) => getFeaturedInternal(storeId), 
+  ['featured-products'], 
+  { tags: ['products'] }
+);
 
 // ==========================================
 // 2. CATEGORY FEED (Homepage Rails)
@@ -108,28 +96,32 @@ type FeedData = {
   metadata: Record<string, CategoryMetaRow>;
 };
 
-const getCategoryFeedInternal = async (): Promise<FeedData> => {
+const getCategoryFeedInternal = async (storeId: string): Promise<FeedData> => {
   const supabase = createStaticClient();
   const RAIL_LIMIT = 8;
 
-  // A. Fetch Everything (Lightweight)
+  // A. Fetch Everything Scoped to Store
   const [productsRes, sectionsRes, metaRes] = await Promise.all([
     supabase
         .from('products')
-        .select('*, variants:product_variants(price)') // ✅ Fetch ONLY price
+        .select('*, variants:product_variants(price)')
+        .eq('store_id', storeId) // ✅ Filter
         .eq('is_active', true)
         .order('created_at', { ascending: false }),
     
     supabase
         .from('category_sections')
         .select('*')
+        .eq('store_id', storeId) // ✅ Filter
         .eq('is_active', true)
         .order('sort_order'),
 
-    supabase.from('category_metadata').select('*')
+    supabase
+        .from('category_metadata')
+        .select('*')
+        .eq('store_id', storeId) // ✅ Filter
   ]);
 
-  // Use List Mapper
   const allProducts = (productsRes.data as unknown as ProductWithPrice[] || []).map(mapToListProduct);
   const sections = sectionsRes.data || [];
   
@@ -142,25 +134,17 @@ const getCategoryFeedInternal = async (): Promise<FeedData> => {
   // C. Group Products
   const grouped: Record<string, Product[]> = {};
 
-  // STRATEGY 1: Use Admin-Defined Sections (Priority)
+  // STRATEGY 1: Admin Sections
   if (sections.length > 0) {
       sections.forEach(section => {
-          // Parse Rules
           const rules = section.filter_rules as unknown as FilterRule[];
-          
-          // Filter Global Products against these Rules
           const matches = allProducts.filter(p => 
-              // Must match the section's category scope (e.g. 'laptop')
               p.category.toLowerCase() === section.category_slug.toLowerCase() &&
-              // AND match the specific rules (e.g. price < 2000)
               matchesRules(p, rules)
           );
 
           if (matches.length > 0) {
-              if (!grouped[section.category_slug]) {
-                  grouped[section.category_slug] = [];
-              }
-              // Add uniques only
+              if (!grouped[section.category_slug]) grouped[section.category_slug] = [];
               const existingIds = new Set(grouped[section.category_slug].map(p => p.id));
               matches.forEach(p => {
                   if (!existingIds.has(p.id) && grouped[section.category_slug].length < RAIL_LIMIT) {
@@ -172,12 +156,10 @@ const getCategoryFeedInternal = async (): Promise<FeedData> => {
       });
   }
 
-  // STRATEGY 2: Fallback (Fill gaps for categories that have products but no sections)
+  // STRATEGY 2: Fallback
   allProducts.forEach(p => {
       const catKey = (p.category || 'uncategorized').toLowerCase();
-      if (!grouped[catKey]) {
-          grouped[catKey] = [];
-      }
+      if (!grouped[catKey]) grouped[catKey] = [];
       if (grouped[catKey].length < RAIL_LIMIT) {
           if (!grouped[catKey].some(ex => ex.id === p.id)) {
               grouped[catKey].push(p);
@@ -185,7 +167,6 @@ const getCategoryFeedInternal = async (): Promise<FeedData> => {
       }
   });
 
-  // Remove empty groups
   Object.keys(grouped).forEach(key => {
       if (grouped[key].length === 0) delete grouped[key];
   });
@@ -193,26 +174,31 @@ const getCategoryFeedInternal = async (): Promise<FeedData> => {
   return { grouped, metadata: metadataMap };
 };
 
-export const getCategoryFeed = cacheService(getCategoryFeedInternal, ['category-feed'], { tags: ['products', 'categories', 'layouts'] });
+export const getCategoryFeed = cacheService(
+  async (storeId: string) => getCategoryFeedInternal(storeId), 
+  ['category-feed'], 
+  { tags: ['products', 'categories', 'layouts'] }
+);
 
 // ==========================================
 // 3. SINGLE PRODUCT
 // ==========================================
-const getProductBySlugInternal = async (slug: string): Promise<Product | null> => {
+// Note: We need storeId now because slugs are only unique PER store
+const getProductBySlugInternal = async (slug: string, storeId: string): Promise<Product | null> => {
   const supabase = createStaticClient();
   const { data } = await supabase
     .from('products')
-    .select('*, variants:product_variants(*)') // Fetch EVERYTHING
+    .select('*, variants:product_variants(*)')
+    .eq('store_id', storeId) // ✅ Filter
     .eq('slug', slug)
     .single();
 
   if (!data) return null;
-  // Use Full Mapper
   return mapToProduct(data as unknown as ProductWithFullVariants);
 };
 
 export const getProductBySlug = cacheService(
-  async (slug: string) => getProductBySlugInternal(slug),
+  async (slug: string, storeId: string) => getProductBySlugInternal(slug, storeId),
   ['product-by-slug'], 
   { tags: ['products'], revalidate: 3600 }
 );
@@ -220,58 +206,57 @@ export const getProductBySlug = cacheService(
 // ==========================================
 // 4. RELATED PRODUCTS
 // ==========================================
-const getRelatedProductsInternal = async (category: string, excludeId: string): Promise<Product[]> => {
+const getRelatedProductsInternal = async (category: string, excludeId: string, storeId: string): Promise<Product[]> => {
   const supabase = createStaticClient();
   const { data } = await supabase
     .from('products')
-    .select('*, variants:product_variants(price)') // Fetch ONLY price
+    .select('*, variants:product_variants(price)')
+    .eq('store_id', storeId) // ✅ Filter
     .eq('category', category)
     .neq('id', excludeId)
     .eq('is_active', true)
     .limit(4);
 
   if (!data) return [];
-  
-  // Use List Mapper
   return (data as unknown as ProductWithPrice[]).map(mapToListProduct);
 };
 
 export const getRelatedProducts = cacheService(
-  async (category: string, excludeId: string) => getRelatedProductsInternal(category, excludeId),
+  async (category: string, excludeId: string, storeId: string) => getRelatedProductsInternal(category, excludeId, storeId),
   ['related-products'],
   { tags: ['products'], revalidate: 3600 }
 );
 
 // ==========================================
-// 5. CATEGORY PAGE DATA (The Full Layout)
+// 5. CATEGORY PAGE DATA
 // ==========================================
 export type CategoryPageData = {
   products: Product[];
   sections: CategorySection[];
 };
 
-const getCategoryPageDataInternal = async (slug: string): Promise<CategoryPageData> => {
+const getCategoryPageDataInternal = async (slug: string, storeId: string): Promise<CategoryPageData> => {
   const supabase = createStaticClient();
 
-  // A. Products (Lightweight)
+  // A. Products
   const { data: productsRaw } = await supabase
     .from('products')
     .select('*, variants:product_variants(price)')
+    .eq('store_id', storeId) // ✅ Filter
     .eq('category', slug)
     .eq('is_active', true);
 
-  // Use List Mapper
   const products = (productsRaw as unknown as ProductWithPrice[] || []).map(mapToListProduct);
 
-  // B. Layouts (Admin Configured Rows)
+  // B. Layouts
   const { data: sectionsRaw } = await supabase
     .from('category_sections')
     .select('*')
+    .eq('store_id', storeId) // ✅ Filter
     .eq('category_slug', slug)
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
 
-  // Safe casting
   const sections: CategorySection[] = (sectionsRaw || []).map((s: SectionRow) => ({
       id: s.id,
       category_slug: s.category_slug,
@@ -286,7 +271,7 @@ const getCategoryPageDataInternal = async (slug: string): Promise<CategoryPageDa
 };
 
 export const getCategoryPageData = cacheService(
-  async (slug: string) => getCategoryPageDataInternal(slug),
+  async (slug: string, storeId: string) => getCategoryPageDataInternal(slug, storeId),
   ['category-page-data'],
   { tags: ['products', 'layouts'], revalidate: 3600 }
 );

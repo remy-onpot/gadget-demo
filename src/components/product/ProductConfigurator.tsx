@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { ShoppingCart, CheckCircle, ShieldCheck, Clock, Plane, AlertCircle, Loader2 } from 'lucide-react';
 import { Product, Variant } from '@/lib/types';
 import { cn } from '@/lib/utils'; 
-import { useStore } from '@/lib/store'; // <--- 1. Import Store
+import { useStore } from '@/lib/store';
 
 interface ConfiguratorProps {
   product: Product;
@@ -24,27 +24,22 @@ export const ProductConfigurator = ({
   isAvailable 
 }: ConfiguratorProps) => {
   
-  const { addToCart, isCartOpen, toggleCart } = useStore(); // <--- 2. Get Actions
-  const [isAdding, setIsAdding] = useState(false); // Local loading state
+  const { addToCart, isCartOpen, toggleCart } = useStore();
+  const [isAdding, setIsAdding] = useState(false);
 
   // Calculate Display Price
   const price = currentVariant ? currentVariant.price : (product.price || 0);
   const oldPrice = currentVariant?.originalPrice || product.originalPrice;
   const isOutOfStock = currentVariant && currentVariant.stock <= 0;
 
-  // --- 3. THE MISSING HANDLER ---
   const handleAddToCart = () => {
     if (!currentVariant) return;
 
     setIsAdding(true);
-    
-    // Add to Global State
     addToCart(product, currentVariant);
 
-    // Visual Feedback Loop
     setTimeout(() => {
         setIsAdding(false);
-        // Optional: Open the cart drawer automatically to show confirmation
         if (!isCartOpen) toggleCart(true);
     }, 600);
   };
@@ -54,7 +49,10 @@ export const ProductConfigurator = ({
       
       {/* 1. HEADER & PRICE */}
       <div className="border-b border-gray-100 pb-6">
-        <h2 className="text-sm font-bold text-orange-600 tracking-wider uppercase mb-2">{product.brand}</h2>
+        {/* ✅ THEME FIX: Dynamic Brand Color */}
+        <h2 className="text-sm font-bold tracking-wider uppercase mb-2" style={{ color: 'var(--primary)' }}>
+           {product.brand}
+        </h2>
         <h1 className="text-3xl md:text-4xl font-black text-slate-900 mb-4">{product.name}</h1>
         
         <div className="flex items-baseline gap-4">
@@ -74,27 +72,32 @@ export const ProductConfigurator = ({
         </div>
       </div>
 
-      {/* 2. THE SELECTORS (The Matrix) */}
+      {/* 2. THE SELECTORS */}
       <div className="space-y-6">
         {/* Render Condition First */}
         {options.condition && (
           <div>
              <span className="text-xs font-bold text-slate-400 uppercase mb-3 block">Condition</span>
              <div className="flex flex-wrap gap-3">
-               {options.condition.map(opt => (
-                 <button
-                   key={opt}
-                   onClick={() => onSelect('condition', opt)}
-                   className={cn(
-                     "px-5 py-3 rounded-xl text-sm font-bold border transition-all shadow-sm",
-                     selections.condition === opt 
-                       ? "bg-slate-900 text-white border-slate-900 shadow-slate-200" 
-                       : "bg-white text-slate-600 border-gray-200 hover:border-orange-200 hover:text-orange-600"
-                   )}
-                 >
-                   {opt}
-                 </button>
-               ))}
+               {options.condition.map(opt => {
+                 const isSelected = selections.condition === opt;
+                 return (
+                   <button
+                     key={opt}
+                     onClick={() => onSelect('condition', opt)}
+                     className={cn(
+                       "px-5 py-3 rounded-xl text-sm font-bold border transition-all shadow-sm",
+                       isSelected 
+                         ? "bg-slate-900 text-white border-slate-900 shadow-slate-200" 
+                         : "bg-white text-slate-600 border-gray-200 hover:border-slate-300"
+                     )}
+                     // ✅ THEME FIX: Add inline style for hover effect logic if needed, 
+                     // but standard slate-900 for active state is usually neutral enough.
+                   >
+                     {opt}
+                   </button>
+                 );
+               })}
              </div>
           </div>
         )}
@@ -118,12 +121,17 @@ export const ProductConfigurator = ({
                         disabled={!available}
                         className={cn(
                           "px-4 py-2 rounded-lg text-sm font-bold border transition-all min-w-[3rem]",
-                          selected 
-                            ? "bg-blue-50 border-blue-500 text-blue-700 ring-1 ring-blue-500" 
-                            : available 
-                               ? "bg-white border-gray-200 text-slate-700 hover:border-blue-300"
-                               : "bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed decoration-slice"
+                          !available && "bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed decoration-slice",
+                          // Base style for available unselected
+                          available && !selected && "bg-white border-gray-200 text-slate-700 hover:border-slate-300"
                         )}
+                        // ✅ THEME FIX: Dynamic Active State
+                        style={selected ? {
+                            backgroundColor: 'rgba(var(--primary-rgb), 0.05)', // Fallback if variable not set
+                            borderColor: 'var(--primary)',
+                            color: 'var(--primary)',
+                            boxShadow: '0 0 0 1px var(--primary)'
+                        } : {}}
                       >
                         {val}
                       </button>
@@ -155,7 +163,8 @@ export const ProductConfigurator = ({
          <div className="w-full h-px bg-gray-200" />
          <div className="flex gap-4">
             <div className="bg-white p-2.5 rounded-full h-fit border border-gray-100 shadow-sm">
-               <ShieldCheck className="text-orange-500" size={20} />
+               {/* ✅ THEME FIX */}
+               <ShieldCheck style={{ color: 'var(--primary)' }} size={20} />
             </div>
             <div>
                <h4 className="font-bold text-slate-900 text-sm">Authenticity Guarantee</h4>
@@ -169,15 +178,18 @@ export const ProductConfigurator = ({
       {/* 4. ACTION BUTTONS */}
       <div className="flex gap-4 pt-4">
          <button 
-           onClick={handleAddToCart} // <--- LINKED HERE
+           onClick={handleAddToCart}
            disabled={!currentVariant || isOutOfStock || isAdding}
            className={cn(
              "flex-1 py-4 rounded-xl font-bold text-lg transition-all shadow-xl flex items-center justify-center gap-2 active:scale-[0.98]",
-             isAdding 
-                ? "bg-green-600 text-white shadow-green-900/20 scale-[0.98]"
-                : "bg-[#F97316] text-white hover:bg-orange-600 shadow-orange-900/10",
              (!currentVariant || isOutOfStock) && "opacity-50 cursor-not-allowed bg-slate-300 text-slate-500 shadow-none"
            )}
+           // ✅ THEME FIX: Dynamic Background
+           style={!currentVariant || isOutOfStock ? {} : {
+               backgroundColor: isAdding ? '#16a34a' : 'var(--primary)',
+               color: 'white',
+               boxShadow: isAdding ? 'none' : '0 10px 30px -10px var(--primary)'
+           }}
          >
            {isAdding ? (
               <><CheckCircle size={20} className="animate-in zoom-in spin-in-180"/> Added to Cart</>

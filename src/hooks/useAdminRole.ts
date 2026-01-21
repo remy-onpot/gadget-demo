@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
-// 1. Define the specific role type
 export type AdminRole = 'owner' | 'staff';
 
 export function useAdminRole() {
@@ -19,21 +18,21 @@ export function useAdminRole() {
          return;
       }
 
-      // Fetch role from DB
-      const { data, error } = await supabase
+      // 1. Check if they explicitly have a staff role
+      // We assume the user is in the context of their "active" store (or first store)
+      const { data: roleData } = await supabase
         .from('admin_roles')
         .select('role')
         .eq('id', user.id)
-        .single();
+        .maybeSingle(); // Use maybeSingle to avoid 406 errors if no row exists
       
-      // 2. SECURITY FIX: Fail Closed
-      // If error or no data, access is DENIED (null), not granted.
-      if (error || !data) {
-         console.warn("User has no admin role assigned.");
-         setRole(null);
+      // 2. LOGIC: 
+      // If they are in the 'admin_roles' table, use that role (e.g., 'staff').
+      // If NOT, but they are logged in, assume they are the 'owner' (Store Creator).
+      if (roleData) {
+         setRole(roleData.role as AdminRole);
       } else {
-         // 3. TYPE FIX: Cast to specific string union
-         setRole(data.role as AdminRole); 
+         setRole('owner');
       }
       
       setLoading(false);
