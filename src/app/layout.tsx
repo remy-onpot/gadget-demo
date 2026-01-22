@@ -2,7 +2,7 @@ import "./globals.css";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "MarketFlow",
+  title: "NimdeShop",
   description: "The OS for African Commerce",
   icons: {
     icon: "/favicon.ico",

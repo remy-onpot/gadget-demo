@@ -34,7 +34,7 @@ export async function generateMetadata(
 
   // Safe Cast: settings is Json in DB, treat as Record for access
   const settings = (store?.settings as Record<string, string>) || {};
-  const siteName = store?.name || "MarketFlow Store";
+  const siteName = store?.name || "NimdeShop";
   const title = settings.site_title || `${siteName} | Home`;
   const description = settings.site_description || "Welcome to our online store.";
 
@@ -80,7 +80,7 @@ export default async function SiteLayout({
         addressCountry: 'GH'
     },
     openingHours: settings.business_hours || "Mo-Sa 09:00-18:00", 
-    url: settings.site_url || `https://${resolvedParams.site}.marketflow.com`
+    url: settings.site_url || `https://${resolvedParams.site}.nimdeshop.com`
   };
 
   return (

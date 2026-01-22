@@ -18,7 +18,7 @@ export default async function SuperAdminLayout({
       <header className="bg-slate-900 text-white p-4 shadow-md">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <span className="text-xl font-bold text-orange-500">MarketFlow God Mode</span>
+            <span className="text-xl font-bold text-orange-500">NimdeShop God Mode</span>
             <span className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-400">
               {user.email}
             </span>
