@@ -646,8 +646,10 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          digital_address: string | null
           email: string | null
           full_name: string | null
+          government_id: string | null
           id: string
           phone: string | null
           shipping_address: string | null
@@ -655,8 +657,10 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          digital_address?: string | null
           email?: string | null
           full_name?: string | null
+          government_id?: string | null
           id: string
           phone?: string | null
           shipping_address?: string | null
@@ -664,8 +668,10 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          digital_address?: string | null
           email?: string | null
           full_name?: string | null
+          government_id?: string | null
           id?: string
           phone?: string | null
           shipping_address?: string | null

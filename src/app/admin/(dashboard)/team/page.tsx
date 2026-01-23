@@ -2,28 +2,37 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Database } from '@/lib/database.types'; // ✅ Import DB Types
+import { useAdminData } from '@/hooks/useAdminData'; // Import the hook
+import { Database } from '@/lib/database.types';
 import { Users, ShieldAlert, Trash2, Mail, Shield } from 'lucide-react';
 import { useAdminRole } from '@/hooks/useAdminRole';
 import { toast } from 'sonner';
 
-// 1. DEFINE ROW TYPE
 type TeamMember = Database['public']['Tables']['admin_roles']['Row'];
 
 export default function TeamPage() {
+  // 1. Use the hook
+  const { storeId, loading: authLoading } = useAdminData();
   const { isOwner, loading: roleLoading } = useAdminRole();
+  
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   
   useEffect(() => {
+    // 2. WAIT for the hook to find the store
+    if (!storeId) return;
+    
     fetchTeam();
-  }, []);
+  }, [storeId]); // 👈 Only run when storeId is ready
 
   const fetchTeam = async () => {
+    if (!storeId) return;
+    
     try {
         const { data, error } = await supabase
             .from('admin_roles')
             .select('*')
+            .eq('store_id', storeId) // ✅ Use the ID from the hook
             .order('created_at', { ascending: false });
             
         if (error) throw error;
@@ -37,7 +46,7 @@ export default function TeamPage() {
   };
 
   // 2. PROTECTED ROUTE CHECK
-  if (roleLoading) return <div className="p-10 text-center text-slate-400">Verifying access...</div>;
+  if (authLoading || roleLoading) return <div className="p-10 text-center text-slate-400">Verifying access...</div>;
 
   if (!isOwner) {
       return (

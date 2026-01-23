@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useTransition } from 'react';
-import { supabase } from '@/lib/supabase'; // Client SDK for Storage Uploads
-import { createBanner, deleteBanner, toggleBannerStatus } from '@/app/admin/(dashboard)/actions'; // ✅ Server Actions
+import { supabase } from '@/lib/supabase';
+import { useAdminData } from '@/hooks/useAdminData'; // Import the hook
+import { createBanner, deleteBanner, toggleBannerStatus } from '@/app/admin/(dashboard)/actions';
 import { Database } from '@/lib/database.types';
 import { Trash2, AlertCircle, CheckCircle, Loader2, Link as LinkIcon, ImagePlus, Palette, Eye, EyeOff } from 'lucide-react';
 import Image from 'next/image';
@@ -10,18 +11,17 @@ import { toast } from 'sonner';
 
 // --- TYPES ---
 type Banner = Database['public']['Tables']['banners']['Row'];
-type BannerSlot = string; // Or specific union type if strict
+type BannerSlot = string;
 
 // --- CONFIGURATION ---
 const SLOT_GROUPS: Record<string, string[]> = {
-  'Homepage Hero': ['hero', 'side_top', 'side_bottom'], // Updated to match your schema defaults
+  'Homepage Hero': ['hero', 'side_top', 'side_bottom'],
   'Featured Sections': ['grid', 'flash'], 
   'Store Info': ['sidebar']
 };
 
 const RICH_CONTENT_SLOTS = ['hero', 'side_top', 'side_bottom', 'grid'];
 
-// Rules for validation/UI hints
 const BANNER_RULES: Record<string, { label: string; width: number; height: number; description: string }> = {
     hero: { label: 'Main Hero', width: 1200, height: 600, description: 'Main slider on homepage.' },
     side_top: { label: 'Sidebar Top', width: 400, height: 300, description: 'Right side of hero.' },
@@ -32,6 +32,9 @@ const BANNER_RULES: Record<string, { label: string; width: number; height: numbe
 };
 
 export const MarketingManager = () => {
+  // 1. Use the hook
+  const { storeId, loading: authLoading } = useAdminData();
+  
   const [banners, setBanners] = useState<Banner[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<string>('hero');
   const [loading, setLoading] = useState(true);
@@ -56,16 +59,21 @@ export const MarketingManager = () => {
   const rule = BANNER_RULES[selectedSlot] || { label: selectedSlot, width: 0, height: 0, description: '' };
   const isRichContent = RICH_CONTENT_SLOTS.includes(selectedSlot);
 
-  // 1. FETCH BANNERS
+  // 2. FETCH BANNERS - Wait for storeId
   useEffect(() => {
+    if (!storeId) return;
+    
     fetchBanners();
-  }, []);
+  }, [storeId]); // 👈 Only run when storeId is ready
 
   const fetchBanners = async () => {
-    // Read-only can use client SDK for speed, or a Server Action if RLS is strict
+    if (!storeId) return;
+    
+    setLoading(true);
     const { data } = await supabase
       .from('banners')
       .select('*')
+      .eq('store_id', storeId) // ✅ Use the ID from the hook
       .order('created_at', { ascending: false });
       
     if (data) setBanners(data);
@@ -81,7 +89,7 @@ export const MarketingManager = () => {
     setPreviewUrl(objectUrl);
   };
 
-  // 2. CREATE BANNER (Upload Client -> DB Server Action)
+  // 3. CREATE BANNER (Upload Client -> DB Server Action)
   const handleUpload = async () => {
     if (!imageFile || !formData.link_url) return toast.error("Image and Link are required");
     
@@ -134,7 +142,7 @@ export const MarketingManager = () => {
     }
   };
 
-  // 3. DELETE BANNER
+  // 4. DELETE BANNER
   const handleDelete = async (id: string) => {
     if(!confirm("Remove this asset?")) return;
     startTransition(async () => {
@@ -144,7 +152,7 @@ export const MarketingManager = () => {
     });
   };
 
-  // 4. TOGGLE STATUS
+  // 5. TOGGLE STATUS
   const handleToggle = async (id: string, current: boolean) => {
       startTransition(async () => {
           await toggleBannerStatus(id, !current);
@@ -216,6 +224,7 @@ export const MarketingManager = () => {
     );
   };
 
+  if (authLoading) return <div className="p-20 text-center"><Loader2 className="animate-spin inline text-slate-300"/> Loading Admin...</div>;
   if (loading) return <div className="p-20 text-center"><Loader2 className="animate-spin inline text-slate-300"/></div>;
 
   return (

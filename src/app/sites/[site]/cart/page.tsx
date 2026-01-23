@@ -29,7 +29,6 @@ export default function CartPage() {
       </div>
       <h2 className="text-2xl font-black text-slate-900 mb-2">Your cart is empty</h2>
       <p className="text-slate-500 mb-8 max-w-xs mx-auto">Looks like you haven't added any gear yet. Check out our latest drops.</p>
-      {/* ✅ THEME FIX: Dynamic Background */}
       <Link 
         href="/" 
         className="text-white px-8 py-3.5 rounded-xl font-bold hover:scale-105 transition-transform shadow-lg"
@@ -49,7 +48,6 @@ export default function CartPage() {
            <div>
              <h1 className="text-2xl md:text-3xl font-black text-slate-900 flex items-center gap-3">
                Shopping Cart 
-               {/* ✅ THEME FIX: Dynamic Badge Colors */}
                <span className="text-sm px-3 py-1 rounded-full font-bold bg-[var(--primary)]/10 text-[var(--primary)]">
                  {cart.length}
                </span>
@@ -71,7 +69,6 @@ export default function CartPage() {
                    onClick={() => toggleAllSelection(!isAllSelected)}
                    className="flex items-center gap-3 font-bold text-slate-700 hover:opacity-80 transition text-sm md:text-base"
                  >
-                   {/* ✅ THEME FIX: Dynamic Checkbox Color */}
                    {isAllSelected ? (
                      <CheckSquare className="text-[var(--primary)]" />
                    ) : (
@@ -92,12 +89,16 @@ export default function CartPage() {
 
               {/* Items Loop */}
               <div className="space-y-3 md:space-y-4">
-                 {cart.map((item) => (
+                 {cart.map((item) => {
+                    // FIX 2: Safely cast specs to Record to use Object.values
+                    const specs = (item.variant.specs as Record<string, string>) || {};
+                    
+                    return (
                     <div 
                       key={item.uniqueId} 
                       className={`group bg-white p-3 md:p-5 rounded-2xl border transition-all ${
                         item.selected 
-                          ? 'border-[var(--primary)]/30 shadow-sm' // ✅ THEME FIX: Border Color
+                          ? 'border-[var(--primary)]/30 shadow-sm' 
                           : 'border-gray-100 opacity-80'
                       }`}
                     >
@@ -115,7 +116,8 @@ export default function CartPage() {
                           <div className="w-20 h-20 md:w-28 md:h-28 bg-gray-50 rounded-xl relative overflow-hidden shrink-0 border border-gray-100">
                              {/* eslint-disable-next-line @next/next/no-img-element */}
                              <img 
-                               src={item.variant.images?.[0] || item.product.images[0]} 
+                               // FIX 1: Use base_images from product if variant images are missing
+                               src={item.variant.images?.[0] || item.product.base_images?.[0] || ''} 
                                className="w-full h-full object-contain p-2" 
                                alt={item.product.name} 
                              />
@@ -139,9 +141,11 @@ export default function CartPage() {
                                    <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded uppercase border border-slate-200">
                                       {item.variant.condition}
                                    </span>
-                                   {Object.values(item.variant.specs).slice(0, 2).map((s, i) => (
+                                   
+                                   {/* FIX 2: Using the safe 'specs' variable created above */}
+                                   {Object.values(specs).slice(0, 2).map((s, i) => (
                                       <span key={i} className="text-[10px] font-bold bg-white border border-gray-200 text-slate-400 px-2 py-0.5 rounded truncate max-w-[100px]">
-                                         {s}
+                                         {String(s)}
                                       </span>
                                    ))}
                                 </div>
@@ -177,11 +181,11 @@ export default function CartPage() {
                           </div>
                        </div>
                     </div>
-                 ))}
+                 )})}
               </div>
           </div>
 
-          {/* RIGHT: DESKTOP SUMMARY (Hidden on Mobile) */}
+          {/* RIGHT: DESKTOP SUMMARY */}
           <div className="hidden lg:block lg:col-span-4">
               <div className="bg-white p-8 rounded-[2rem] shadow-lg shadow-slate-200 border border-gray-100 sticky top-28">
                  <h2 className="text-xl font-black text-slate-900 mb-6">Order Summary</h2>
@@ -208,14 +212,13 @@ export default function CartPage() {
                      </p>
                  </div>
 
-                 {/* ✅ THEME FIX: Dynamic Checkout Button */}
                  <button 
                    onClick={handleCheckout}
                    disabled={selectedItems.length === 0}
                    className="w-full text-white py-4 rounded-xl font-bold text-lg hover:opacity-90 transition-all shadow-xl shadow-slate-900/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
                    style={{ backgroundColor: 'var(--primary)' }}
                  >
-                    Checkout ({selectedItems.length}) <ArrowRight size={20} />
+                   Checkout ({selectedItems.length}) <ArrowRight size={20} />
                  </button>
               </div>
           </div>
@@ -223,13 +226,12 @@ export default function CartPage() {
         </div>
       </div>
 
-      {/* MOBILE STICKY CHECKOUT BAR (Visible only on Mobile) */}
+      {/* MOBILE STICKY CHECKOUT BAR */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 pb-8 md:hidden shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-40">
          <div className="flex items-center justify-between mb-3">
             <div className="text-xs font-medium text-slate-400">Total ({selectedItems.length} items)</div>
             <div className="text-2xl font-black text-slate-900">₵{subtotal.toLocaleString()}</div>
          </div>
-         {/* ✅ THEME FIX: Dynamic Mobile Button */}
          <button 
             onClick={handleCheckout}
             disabled={selectedItems.length === 0}

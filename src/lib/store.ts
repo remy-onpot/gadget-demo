@@ -1,26 +1,28 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { Product, Banner, Variant } from '@/lib/types'; 
 import { supabase } from '@/lib/supabase'; 
 import { Database } from '@/lib/database.types';
 
-// 1. DEFINE CART ITEM
+// 1. DEFINE TYPES FROM DB
+type ProductRow = Database['public']['Tables']['products']['Row'];
+type VariantRow = Database['public']['Tables']['product_variants']['Row'];
+type BannerRow = Database['public']['Tables']['banners']['Row'];
+
+// Cart needs a mix of Product and Variant info
 export interface CartItem {
   uniqueId: string; // usually variant.id
-  product: Product; // Parent info
-  variant: Variant; // Specific info
+  product: ProductRow; // Parent info
+  variant: VariantRow; // Specific info
   quantity: number;
   selected: boolean; 
 }
 
-// 2. HELPER TYPES (Updated)
-// We treat the JSON settings as a simple record
 type StoreSettings = Record<string, string>;
 
 interface StoreState {
   // Data State
-  products: Product[];
-  banners: Banner[];
+  products: ProductRow[];
+  banners: BannerRow[];
   settings: StoreSettings;
 
   // Cart State
@@ -32,9 +34,8 @@ interface StoreState {
   isLoading: boolean;
 
   // Actions
-  // ⚡ UPDATED: We now require storeId to fetch the correct data
   fetchStoreData: (storeId: string) => Promise<void>;
-  addToCart: (product: Product, variant: Variant) => void;
+  addToCart: (product: ProductRow, variant: VariantRow, quantity?: number) => void;
   removeFromCart: (variantId: string) => void;
   updateQuantity: (variantId: string, delta: number) => void;
   
@@ -46,6 +47,7 @@ interface StoreState {
 
   toggleAdmin: () => void;
   toggleCart: (isOpen?: boolean) => void;
+  setIsCartOpen: (isOpen: boolean) => void; // Added for compatibility
 }
 
 export const useStore = create<StoreState>()(
@@ -61,29 +63,36 @@ export const useStore = create<StoreState>()(
 
       toggleAdmin: () => set((state) => ({ isAdminMode: !state.isAdminMode })),
       toggleCart: (isOpen) => set((state) => ({ isCartOpen: isOpen ?? !state.isCartOpen })),
+      setIsCartOpen: (isOpen) => set({ isCartOpen: isOpen }),
 
       // --- 🛒 CART LOGIC ---
-      addToCart: (product, variant) => {
+      addToCart: (product, variant, qty = 1) => {
         const currentCart = get().cart;
         const existingItem = currentCart.find((item) => item.uniqueId === variant.id);
+        const stock = variant.stock ?? 0;
 
         if (existingItem) {
           // Check Stock
-          if (existingItem.quantity >= variant.stock) {
-             alert(`Only ${variant.stock} units available!`);
+          if (existingItem.quantity + qty > stock) {
+             // In a real app, maybe use a toast here instead of alert
+             // alert(`Only ${stock} units available!`);
              return;
           }
 
           set({
             cart: currentCart.map((item) =>
               item.uniqueId === variant.id
-                ? { ...item, quantity: item.quantity + 1, selected: true } 
+                ? { ...item, quantity: item.quantity + qty, selected: true } 
                 : item
             ),
             isCartOpen: true 
           });
         } else {
           // New Item
+          if (qty > stock) {
+             return; // Don't add if 0 stock
+          }
+
           set({
             cart: [
               ...currentCart,
@@ -91,7 +100,7 @@ export const useStore = create<StoreState>()(
                 uniqueId: variant.id,
                 product,
                 variant,
-                quantity: 1,
+                quantity: qty,
                 selected: true, 
               },
             ],
@@ -111,6 +120,11 @@ export const useStore = create<StoreState>()(
             .map((item) => {
               if (item.uniqueId === variantId) {
                 const newQty = item.quantity + delta;
+                const stock = item.variant.stock ?? 0;
+                
+                // Prevent going above stock
+                if (newQty > stock) return item;
+                
                 return { ...item, quantity: newQty };
               }
               return item;
@@ -148,24 +162,23 @@ export const useStore = create<StoreState>()(
         set({ isLoading: true });
 
         try {
-          // Parallel Fetching for speed
           const [productsRes, bannersRes, storeRes] = await Promise.all([
-            // 1. Fetch Products (Filtered by Store)
+            // 1. Fetch Products
             supabase
               .from('products')
-              .select('*, images:base_images, price:base_price') 
-              .eq('store_id', storeId) // ✅ Secure: Filter by Store
+              .select('*')
+              .eq('store_id', storeId)
               .eq('is_active', true)
               .order('created_at', { ascending: false }),
             
-            // 2. Fetch Banners (Filtered by Store)
+            // 2. Fetch Banners
             supabase
               .from('banners')
               .select('*')
-              .eq('store_id', storeId) // ✅ Secure: Filter by Store
+              .eq('store_id', storeId)
               .eq('is_active', true),
             
-            // 3. Fetch Settings (From Stores table)
+            // 3. Fetch Settings
             supabase
               .from('stores')
               .select('settings')
@@ -173,15 +186,12 @@ export const useStore = create<StoreState>()(
               .single()
           ]);
 
-          // Extract settings safely
           const rawSettings = storeRes.data?.settings || {};
-          // Ensure it matches our expected string record type
           const settingsMap = rawSettings as Record<string, string>;
 
           set({
-            // ✅ SAFE: Double casting to bridge DB JSON -> App Interface
-            products: (productsRes.data as unknown as Product[]) || [],
-            banners: (bannersRes.data as unknown as Banner[]) || [],
+            products: productsRes.data || [],
+            banners: bannersRes.data || [],
             settings: settingsMap,
             isLoading: false,
           });

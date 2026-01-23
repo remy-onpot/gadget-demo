@@ -3,9 +3,14 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server'; 
 import { getCategoryPageData } from '@/lib/services/products';
 import { CategoryClient } from '@/components/shop/CategoryClient';
+import { Database } from '@/lib/database.types';
+
+// Define DB Types
+type ProductRow = Database['public']['Tables']['products']['Row'];
+type SectionRow = Database['public']['Tables']['category_sections']['Row'];
 
 interface Props {
-  params: Promise<{ site: string; slug: string }>; // Updated to 'slug' to match your folder structure
+  params: Promise<{ site: string; slug: string }>;
 }
 
 // 1. DYNAMIC METADATA
@@ -27,11 +32,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 // 2. SERVER COMPONENT
 export default async function CategoryPage({ params }: Props) {
   const { site, slug } = await params;
-
-  // ✅ FIX: Added 'await' here
   const supabase = await createClient();
 
-  // A. RESOLVE STORE ID (Identity Step)
+  // A. RESOLVE STORE ID
   const { data: store } = await supabase
     .from('stores')
     .select('id')
@@ -40,8 +43,27 @@ export default async function CategoryPage({ params }: Props) {
 
   if (!store) return notFound();
 
-  // B. FETCH DATA (Pass store.id)
-  const { products, sections } = await getCategoryPageData(slug, store.id);
+  // B. FETCH DATA (Legacy format)
+  const { products: legacyProducts, sections: legacySections } = await getCategoryPageData(slug, store.id);
+
+  // C. TRANSFORM TO DB FORMAT
+  // We map the legacy fields (price, images) to the new DB fields (base_price, base_images)
+  const products = legacyProducts.map((p: any) => ({
+    ...p,
+    base_price: p.price,
+    base_images: p.images,
+    is_active: true, // Default for type satisfaction
+    store_id: store.id,
+    created_at: new Date().toISOString()
+  })) as ProductRow[];
+
+  const sections = legacySections.map((s: any) => ({
+    ...s,
+    store_id: store.id,
+    created_at: new Date().toISOString(),
+    is_active: true,
+    sort_order: 0
+  })) as SectionRow[];
 
   return (
     <CategoryClient 

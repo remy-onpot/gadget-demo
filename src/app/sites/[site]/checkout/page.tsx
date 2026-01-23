@@ -43,8 +43,9 @@ export default function CheckoutPage({ storeSlug }: CheckoutProps) {
            variant: item.variant as any,
            product: {
                ...item.product,
-               base_images: item.product.images,
-               base_price: item.product.price    
+               // FIX: Using correct DB field names
+               base_images: item.product.base_images,
+               base_price: item.product.base_price    
            } as any 
        }));
        await captureAbandonedCart(storeSlug, formData, snapshotItems);
@@ -56,18 +57,21 @@ export default function CheckoutPage({ storeSlug }: CheckoutProps) {
     setLoading(true);
 
     try {
-      // 1. Prepare Payload (Minimal Data)
-      // We strictly send ONLY what is needed to identify the item.
-      // Prices and names are now fetched securely on the server.
-      const itemsPayload = checkoutItems.map(item => ({
-        product_id: item.product.id,
-        variant_id: item.variant.id,
-        // We pass the variant label so the merchant sees "Red / Large" in the order
-        variant_name: `${Object.values(item.variant.specs).slice(0, 2).join('/')} - ${item.variant.condition}`, 
-        quantity: item.quantity,
-      }));
+      // 1. Prepare Payload
+      const itemsPayload = checkoutItems.map(item => {
+        // FIX: Safe cast for specs
+        const specs = (item.variant.specs as Record<string, string>) || {};
+        const specLabel = Object.values(specs).slice(0, 2).join('/');
 
-      // 2. Submit Order (No 'total' or 'unit_price' here anymore)
+        return {
+          product_id: item.product.id,
+          variant_id: item.variant.id,
+          variant_name: `${specLabel} - ${item.variant.condition}`, 
+          quantity: item.quantity,
+        };
+      });
+
+      // 2. Submit Order
       const result = await submitOrder({
         slug: storeSlug,
         customer: formData,
@@ -76,11 +80,11 @@ export default function CheckoutPage({ storeSlug }: CheckoutProps) {
 
       if (!result.success) throw new Error(result.error);
 
-      // 3. WhatsApp Message Construction (For Client Display Only)
-      // Note: The database order is already secure. This message is just for convenience.
+      // 3. WhatsApp Message
       const orderId = result.orderId!.slice(0, 6).toUpperCase();
       const lineItems = checkoutItems.map(item => {
-        const specSummary = Object.values(item.variant.specs).slice(0, 2).join('/');
+        const specs = (item.variant.specs as Record<string, string>) || {};
+        const specSummary = Object.values(specs).slice(0, 2).join('/');
         return `• ${item.quantity}x ${item.product.name} (${specSummary}) - ₵${item.variant.price}`;
       }).join('%0a');
 
@@ -100,7 +104,7 @@ export default function CheckoutPage({ storeSlug }: CheckoutProps) {
 
       removeSelected();
       
-      const adminPhone = result.whatsappPhone || '233XXXXXXXXX'; 
+      const adminPhone = result.whatsappPhone || '233551578335'; 
       window.location.href = `https://wa.me/${adminPhone}?text=${message}`;
 
     } catch (err: any) {
@@ -123,7 +127,6 @@ export default function CheckoutPage({ storeSlug }: CheckoutProps) {
           
           <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100">
               <h2 className="text-2xl font-black text-slate-900 mb-6 flex items-center gap-3">
-                {/* Theme Icon */}
                 <div className="w-10 h-10 rounded-full flex items-center justify-center bg-[var(--primary)]/10 text-[var(--primary)]">
                   <User size={20} />
                 </div>
@@ -211,12 +214,17 @@ export default function CheckoutPage({ storeSlug }: CheckoutProps) {
               </h2>
               
               <div className="space-y-6 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
-                 {checkoutItems.map((item) => (
+                 {checkoutItems.map((item) => {
+                   // FIX: Safe cast specs to Record
+                   const specs = (item.variant.specs as Record<string, string>) || {};
+                   
+                   return (
                    <div key={item.uniqueId} className="flex gap-4">
                       <div className="w-20 h-20 bg-gray-100 rounded-2xl relative overflow-hidden flex-shrink-0 border border-gray-200">
                          {/* eslint-disable-next-line @next/next/no-img-element */}
                          <img 
-                           src={item.variant.images?.[0] || item.product.images[0]} 
+                           // FIX: Use base_images
+                           src={item.variant.images?.[0] || item.product.base_images?.[0] || ''} 
                            className="w-full h-full object-cover" 
                            alt={item.product.name} 
                          />
@@ -227,9 +235,9 @@ export default function CheckoutPage({ storeSlug }: CheckoutProps) {
                             <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-gray-200 uppercase">
                                {item.variant.condition}
                             </span>
-                            {Object.values(item.variant.specs).slice(0, 2).map((spec, i) => (
+                            {Object.values(specs).slice(0, 2).map((spec, i) => (
                                <span key={i} className="text-[10px] font-bold bg-gray-50 text-slate-400 px-1.5 py-0.5 rounded border border-gray-100 uppercase">
-                                  {spec}
+                                  {String(spec)}
                                </span>
                             ))}
                          </div>
@@ -239,7 +247,7 @@ export default function CheckoutPage({ storeSlug }: CheckoutProps) {
                          </div>
                       </div>
                    </div>
-                 ))}
+                 )})}
               </div>
 
               <div className="border-t-2 border-dashed border-gray-100 mt-6 pt-6 space-y-3">

@@ -1,27 +1,32 @@
 "use client";
 
 import React, { useEffect, useState, useTransition } from 'react';
-import { supabase } from '@/lib/supabase'; // Client SDK for Reads
-import { updateCategoryMeta } from '@/app/admin/(dashboard)/actions'; // ✅ Correct Server Action Path
+import { supabase } from '@/lib/supabase';
+import { useAdminData } from '@/hooks/useAdminData'; // Import the hook
+import { updateCategoryMeta } from '@/app/admin/(dashboard)/actions';
 import { Database } from '@/lib/database.types';
 import { Save, Loader2, Layers, RefreshCw, ImagePlus, Upload, Trash2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
-// 1. USE DB TYPE
 type CategoryMeta = Database['public']['Tables']['category_metadata']['Row'];
 
 export default function LayoutsPage() {
+  // 1. Use the hook
+  const { storeId, loading: authLoading } = useAdminData();
+  
   const [categories, setCategories] = useState<CategoryMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState<string | null>(null);
   
-  // Server Action State
   const [isPending, startTransition] = useTransition();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
+    // 2. WAIT for the hook to find the store
+    if (!storeId) return;
+    
     fetchData();
-  }, []);
+  }, [storeId]); // 👈 Only run when storeId is ready
 
   // Prevent accidental navigation if dirty
   useEffect(() => {
@@ -36,16 +41,23 @@ export default function LayoutsPage() {
   }, [hasUnsavedChanges]);
 
   const fetchData = async () => {
+    if (!storeId) return;
+    
     setLoading(true);
     
-    // 1. Fetch Metadata (RLS Protected)
-    const { data: meta } = await supabase.from('category_metadata').select('*');
+    // 1. Fetch Metadata with storeId filter
+    const { data: meta } = await supabase
+      .from('category_metadata')
+      .select('*')
+      .eq('store_id', storeId); // ✅ Use the ID from the hook
+      
     const metaMap = new Map(meta?.map(m => [m.slug, m]) || []);
 
     // 2. Fetch Active Categories from Products
     const { data: products } = await supabase
       .from('products')
       .select('category')
+      .eq('store_id', storeId) // ✅ Use the ID from the hook
       .eq('is_active', true);
       
     const activeSlugs = Array.from(new Set(
@@ -53,16 +65,11 @@ export default function LayoutsPage() {
     ));
 
     // 3. Merge (Create default entry if missing)
-    // Note: We need to match the DB schema for 'store_id' eventually, 
-    // but the Server Action handles that on save.
     const mergedList: CategoryMeta[] = activeSlugs.map(slug => {
       const existing = metaMap.get(slug);
       
-      // If existing found, return it
       if (existing) return existing;
 
-      // Else create default shape
-      // We cast as CategoryMeta because we don't have the store_id yet (Server adds it)
       return { 
         slug, 
         title: slug.charAt(0).toUpperCase() + slug.slice(1) + 's',
@@ -71,7 +78,7 @@ export default function LayoutsPage() {
         show_overlay: true,
         sort_order: 100,
         created_at: new Date().toISOString(),
-        store_id: '' // Placeholder, will be ignored/overwritten by Server Action
+        store_id: storeId // ✅ Use the ID from the hook
       } as CategoryMeta;
     });
 
@@ -91,10 +98,9 @@ export default function LayoutsPage() {
 
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${slug}-${Date.now()}.${fileExt}`; // Unique name
+      const fileName = `${slug}-${Date.now()}.${fileExt}`;
       const filePath = `categories/${fileName}`;
 
-      // Upload to 'marketing' bucket
       const { error: uploadError } = await supabase.storage
         .from('marketing')
         .upload(filePath, file, { upsert: true });
@@ -118,8 +124,6 @@ export default function LayoutsPage() {
   const saveAll = () => {
     startTransition(async () => {
         try {
-            // Remove the placeholder store_id before sending, 
-            // or let the Server Action overwrite it.
             await updateCategoryMeta(categories);
             setHasUnsavedChanges(false);
             toast.success("Layouts saved successfully");
@@ -129,11 +133,11 @@ export default function LayoutsPage() {
     });
   };
 
+  if (authLoading) return <div className="p-20 text-center flex flex-col items-center gap-4"><Loader2 className="animate-spin text-orange-500" size={32}/><p className="text-slate-400 font-medium">Loading...</p></div>;
   if (loading) return <div className="p-20 text-center flex flex-col items-center gap-4"><Loader2 className="animate-spin text-orange-500" size={32}/><p className="text-slate-400 font-medium">Loading your categories...</p></div>;
 
   return (
     <div className="max-w-5xl mx-auto pb-32">
-      
       {/* STICKY HEADER */}
       <div className="sticky top-0 z-50 bg-slate-50/95 backdrop-blur-sm py-6 border-b border-gray-200 mb-10 -mx-4 px-4 md:mx-0 md:px-0 transition-all">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

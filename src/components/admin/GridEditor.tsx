@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useTransition } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAdminData } from '@/hooks/useAdminData'; // Import the hook
 import { updateContentBlock, createContentBlock, deleteContentBlock } from '@/app/admin/(dashboard)/actions';
 import { Database } from '@/lib/database.types';
 import { 
@@ -27,21 +28,33 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string; size?: 
 };
 
 export const GridEditor = () => {
+  // 1. Use the hook
+  const { storeId, loading: authLoading } = useAdminData();
+  
   const [blocks, setBlocks] = useState<ContentBlock[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'static' | 'features' | 'testimonials'>('features');
   const [isPending, startTransition] = useTransition();
 
-  useEffect(() => { fetchBlocks(); }, []);
+  useEffect(() => {
+    // 2. WAIT for the hook to find the store
+    if (!storeId) return;
+    
+    fetchBlocks();
+  }, [storeId]); // 👈 Only run when storeId is ready
 
   const fetchBlocks = async () => {
-  const { data, error } = await supabase
-    .from('content_blocks')
-    .select('*')
-    .in('section_key', ['home_grid'])
-    .order('sort_order', { ascending: true });
+    if (!storeId) return;
+    
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('content_blocks')
+      .select('*')
+      .eq('store_id', storeId) // ✅ Use the ID from the hook
+      .in('section_key', ['home_grid'])
+      .order('sort_order', { ascending: true });
 
-    if (error) { toast.error("Failed to load"); return; }
+    if (error) { toast.error("Failed to load"); setLoading(false); return; }
     
     // Parse JSON safely
     const safeBlocks = (data || []).map(b => ({
@@ -98,17 +111,17 @@ export const GridEditor = () => {
           meta_info: type === 'testimonial_item' ? { author: 'Name', role: 'Customer' } : { badge: 'New' }
       };
 
-      // 3. Create Optimistic Object (Strictly matches ContentBlock Interface)
+      // 3. Create Optimistic Object
       const optimisticBlock: ContentBlock = {
           id: tempId,
           ...baseData,
-          sort_order: 0,            // ✅ Required by DB type
-          created_at: new Date().toISOString(), // ✅ Required
-          store_id: null,           // ✅ Required
+          sort_order: 0,
+          created_at: new Date().toISOString(),
+          store_id: storeId, // ✅ Use the ID from the hook
       };
 
       startTransition(async () => {
-         // A. Optimistic Update (Show immediately)
+         // A. Optimistic Update
          setBlocks(prev => [...prev, optimisticBlock]);
 
          try {
@@ -119,7 +132,7 @@ export const GridEditor = () => {
                  // C. Swap Temp ID with Real DB ID
                  setBlocks(prev => prev.map(b => b.id === tempId ? {
                      ...created,
-                     meta_info: created.meta_info as BlockMeta // Cast JSON to strictly typed interface
+                     meta_info: created.meta_info as BlockMeta
                  } : b));
                  
                  toast.success("Item added");
@@ -131,6 +144,7 @@ export const GridEditor = () => {
          }
       });
   };
+
   const handleDelete = async (id: string) => {
       if(!confirm("Are you sure?")) return;
       setBlocks(prev => prev.filter(b => b.id !== id)); // Optimistic delete
@@ -145,11 +159,10 @@ export const GridEditor = () => {
 
   // --- FILTERS ---
   const staticBlocks = blocks.filter(b => ['tile_delivery', 'tile_warranty'].includes(b.block_key));
-  // Note: We look for the new list keys. If you have old 'tile_main' rows, 
-  // you might want to manually update them in Supabase to 'main_carousel_item' or include them here.
   const featureBlocks = blocks.filter(b => b.block_key === 'main_carousel_item' || b.block_key === 'tile_main');
   const testimonialBlocks = blocks.filter(b => b.block_key === 'testimonial_item' || b.block_key === 'testimonial');
 
+  if (authLoading) return <div className="p-10 text-center"><Loader2 className="animate-spin inline"/> Loading Admin...</div>;
   if (loading) return <div className="p-10 text-center"><Loader2 className="animate-spin inline"/> Loading...</div>;
 
   return (

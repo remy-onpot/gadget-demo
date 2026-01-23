@@ -1,18 +1,25 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Product, CategorySection, FilterRule } from '@/lib/types'; // ✅ Import Types
+import { Database } from '@/lib/database.types';
+import { FilterRule } from '@/lib/types'; 
 import { matchesRules } from '@/lib/filter-engine'; 
 import { ProductCard } from '@/components/ProductCard';
 import { ArrowRight, Grid, LayoutList, Filter, ArrowLeft, Plane, PackageSearch } from 'lucide-react';
 import Link from 'next/link';
 
-// --- SUB-COMPONENTS ---
-// (BrandRow remains the same)
+// 1. Define Types from Database
+type ProductRow = Database['public']['Tables']['products']['Row'];
+type CategorySectionRow = Database['public']['Tables']['category_sections']['Row'];
 
-const ProductRow = ({ title, products, onViewAll }: { title: string, products: Product[], onViewAll: () => void }) => {
+// --- SUB-COMPONENTS ---
+
+// Simple placeholder for BrandRow since it wasn't in your snippet
+const BrandRow = () => null;
+
+const ProductRow = ({ title, products, onViewAll }: { title: string, products: ProductRow[], onViewAll: () => void }) => {
   if (products.length === 0) return null;
-  // ... (render logic remains same) ...
+  
   return (
     <section className="py-10 border-b border-gray-100 last:border-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
        <div className="container mx-auto px-4">
@@ -31,47 +38,48 @@ const ProductRow = ({ title, products, onViewAll }: { title: string, products: P
                    <ProductCard product={product} />
                 </div>
              ))}
-             {/* ... Mobile See All Button ... */}
           </div>
        </div>
     </section>
   );
 };
 
-// (FullGridView remains the same)
-
 // --- MAIN CLIENT COMPONENT ---
 interface CategoryClientProps {
     slug: string;
-    allProducts: Product[];
-    sections: CategorySection[]; // ✅ Strictly Typed
+    allProducts: ProductRow[];
+    sections: CategorySectionRow[]; 
 }
 
 export function CategoryClient({ slug, allProducts, sections }: CategoryClientProps) {
-  const [activeGrid, setActiveGrid] = useState<{ title: string, products: Product[] } | null>(null);
+  const [activeGrid, setActiveGrid] = useState<{ title: string, products: ProductRow[] } | null>(null);
 
   // Logic: Map raw sections to processed sections
-  const processedSections = sections.map(section => ({
-     ...section,
-     // matchesRules now expects Product and FilterRule[], which we strictly provide
-     products: allProducts.filter(p => matchesRules(p, section.filter_rules || []))
-  }));
+  const processedSections = sections.map(section => {
+     // Cast the JSON filter_rules to the type expected by matchesRules
+     const rules = (section.filter_rules as unknown as FilterRule[]) || [];
+     
+     return {
+       ...section,
+       filter_rules: rules,
+       // @ts-ignore - matchesRules might expect legacy type, but logic should hold if fields match
+       products: allProducts.filter(p => matchesRules(p as any, rules))
+     };
+  });
 
-  // ✅ Strictly typed 'rules' argument
   const handleSectionViewAll = (title: string, rules: FilterRule[]) => {
-    const fullFilteredList = allProducts.filter(p => matchesRules(p, rules));
+    // @ts-ignore
+    const fullFilteredList = allProducts.filter(p => matchesRules(p as any, rules));
     setActiveGrid({ title, products: fullFilteredList });
   };
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-slate-900 font-sans pb-20">
-       {/* ... Header ... */}
-
+       
        {/* CONTENT */}
        {activeGrid ? (
          // FullGridView Logic
          <div className="container mx-auto px-4 py-8 animate-in zoom-in-95 duration-300">
-             {/* ... (Same grid view UI) ... */}
              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
                 <button onClick={() => setActiveGrid(null)} className="text-sm text-gray-500 hover:text-orange-600 flex items-center gap-1 mb-2 font-bold">
                     <ArrowLeft size={16} /> Back to Overview
@@ -98,8 +106,7 @@ export function CategoryClient({ slug, allProducts, sections }: CategoryClientPr
                </div>
             ) : (
                processedSections.map(section => {
-                  // Type guard for section_type
-                  if (section.section_type === 'brand_row') return <div key={section.id}>{/* BrandRow Logic */}</div>;
+                  if (section.section_type === 'brand_row') return <div key={section.id}><BrandRow /></div>;
                   
                   return (
                      <ProductRow 

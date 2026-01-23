@@ -2,13 +2,12 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { MessageCircle, Clock, ShoppingBag, ArrowRight } from 'lucide-react';
+import { useAdminData } from '@/hooks/useAdminData'; // Import the hook
+import { MessageCircle, Clock, ShoppingBag, ArrowRight, Loader2 } from 'lucide-react';
 import { Database } from '@/lib/database.types';
 
-// 1. Define the DB Row Type
 type CartRow = Database['public']['Tables']['carts']['Row'];
 
-// 2. Define the JSON Content Structure
 interface CartItem {
   quantity: number;
   product: {
@@ -19,25 +18,33 @@ interface CartItem {
   };
 }
 
-// 3. Define Contact Info Structure
 interface ContactInfo {
   name?: string;
   phone?: string;
 }
 
 export default function AbandonedCartsPage() {
+  // 1. Use the hook
+  const { storeId, loading: authLoading } = useAdminData();
+  
   const [carts, setCarts] = useState<CartRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // 2. WAIT for the hook to find the store
+    if (!storeId) return;
+    
     fetchCarts();
-  }, []);
+  }, [storeId]); // 👈 Only run when storeId is ready
 
   const fetchCarts = async () => {
-    // The RLS policy we added earlier ensures this ONLY returns carts for YOUR store
+    if (!storeId) return;
+    
+    setLoading(true);
     const { data } = await supabase
       .from('carts')
       .select('*')
+      .eq('store_id', storeId) // ✅ Use the ID from the hook
       .eq('status', 'active')
       .order('created_at', { ascending: false })
       .limit(50);
@@ -56,16 +63,15 @@ export default function AbandonedCartsPage() {
     const firstItem = items?.[0]?.product?.name || "your items";
     const total = items?.reduce((sum, item) => sum + (item.variant.price * item.quantity), 0) || 0;
     
-    // ✅ FIX: Removed hardcoded store name. Now it works for ANY shop.
     const msg = `Hi ${name} 👋, I saw you were checking out the *${firstItem}* (Total: ₵${total}) but didn't finish!\n\nDo you need help with payment? I can offer you a small discount if you complete it now.\n\nReply YES to continue!`;
     
-    // Remove '+' and spaces for WA link
     const cleanPhone = info.phone.replace(/[^0-9]/g, '');
     const finalPhone = cleanPhone.startsWith('0') ? '233' + cleanPhone.substring(1) : cleanPhone;
 
     return `https://wa.me/${finalPhone}?text=${encodeURIComponent(msg)}`;
   };
 
+  if (authLoading) return <div className="p-10 text-center text-slate-400"><Loader2 className="animate-spin inline" /> Loading...</div>;
   if (loading) return <div className="p-10 text-center text-slate-400">Loading sniper data...</div>;
 
   return (
@@ -90,8 +96,6 @@ export default function AbandonedCartsPage() {
           return (
             <div key={cart.id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all group">
                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                  
-                  {/* Left: Customer Info */}
                   <div className="flex items-start gap-4">
                      <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
                         <ShoppingBag size={20} />
@@ -114,7 +118,6 @@ export default function AbandonedCartsPage() {
                      </div>
                   </div>
 
-                  {/* Right: Action */}
                   <a 
                     href={generateRecoveryLink(cart)}
                     target="_blank"

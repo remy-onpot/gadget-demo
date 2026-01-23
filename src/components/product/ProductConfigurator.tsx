@@ -1,14 +1,18 @@
 "use client";
 
 import React, { useState } from 'react';
-import { ShoppingCart, CheckCircle, ShieldCheck, Clock, Plane, AlertCircle, Loader2 } from 'lucide-react';
-import { Product, Variant } from '@/lib/types';
+import { ShoppingCart, CheckCircle, ShieldCheck, Clock, Plane, AlertCircle, Loader2, Check } from 'lucide-react';
+import { Database } from '@/lib/database.types'; 
 import { cn } from '@/lib/utils'; 
 import { useStore } from '@/lib/store';
 
+// 1. Define Types from Database
+type ProductRow = Database['public']['Tables']['products']['Row'];
+type VariantRow = Database['public']['Tables']['product_variants']['Row'];
+
 interface ConfiguratorProps {
-  product: Product;
-  currentVariant?: Variant;
+  product: ProductRow;
+  currentVariant?: VariantRow;
   options: Record<string, string[]>;
   selections: Record<string, string>;
   onSelect: (key: string, value: string) => void;
@@ -28,19 +32,30 @@ export const ProductConfigurator = ({
   const [isAdding, setIsAdding] = useState(false);
 
   // Calculate Display Price
-  const price = currentVariant ? currentVariant.price : (product.price || 0);
-  const oldPrice = currentVariant?.originalPrice || product.originalPrice;
-  const isOutOfStock = currentVariant && currentVariant.stock <= 0;
+  const price = currentVariant ? currentVariant.price : (product.base_price || 0);
+  const oldPrice = currentVariant?.original_price;
+  const stock = currentVariant?.stock ?? 0;
+  const isOutOfStock = currentVariant && stock <= 0;
 
   const handleAddToCart = () => {
     if (!currentVariant) return;
 
     setIsAdding(true);
-    addToCart(product, currentVariant);
+    
+    // FIX: We cast the object to 'any' to bypass the strict type check 
+    // because we are injecting 'price' and 'images' for backward compatibility
+    // with the store's internal logic, even though the type definition says otherwise.
+    const productForCart = {
+       ...product,
+       price: product.base_price, 
+       images: product.base_images || [] 
+    } as any;
+
+    addToCart(productForCart, currentVariant);
 
     setTimeout(() => {
         setIsAdding(false);
-        if (!isCartOpen) toggleCart(true);
+        if (!isCartOpen) toggleCart(); 
     }, 600);
   };
 
@@ -49,7 +64,6 @@ export const ProductConfigurator = ({
       
       {/* 1. HEADER & PRICE */}
       <div className="border-b border-gray-100 pb-6">
-        {/* ✅ THEME FIX: Dynamic Brand Color */}
         <h2 className="text-sm font-bold tracking-wider uppercase mb-2" style={{ color: 'var(--primary)' }}>
            {product.brand}
         </h2>
@@ -65,7 +79,11 @@ export const ProductConfigurator = ({
             </span>
           )}
           {currentVariant && (
-             <span className={`text-xs font-bold px-2 py-1 rounded-full ${isOutOfStock ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>
+             <span className={cn(
+               "text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1",
+               isOutOfStock ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'
+             )}>
+                {isOutOfStock ? <AlertCircle size={12}/> : <CheckCircle size={12}/>}
                 {isOutOfStock ? 'Out of Stock' : 'In Stock'}
              </span>
           )}
@@ -74,27 +92,26 @@ export const ProductConfigurator = ({
 
       {/* 2. THE SELECTORS */}
       <div className="space-y-6">
-        {/* Render Condition First */}
-        {options.condition && (
+        {/* Condition Selector */}
+        {options.condition && options.condition.length > 0 && (
           <div>
              <span className="text-xs font-bold text-slate-400 uppercase mb-3 block">Condition</span>
              <div className="flex flex-wrap gap-3">
-               {options.condition.map(opt => {
-                 const isSelected = selections.condition === opt;
+               {options.condition.map(cond => {
+                 const isSelected = selections.condition === cond;
                  return (
                    <button
-                     key={opt}
-                     onClick={() => onSelect('condition', opt)}
+                     key={cond}
+                     onClick={() => onSelect('condition', cond)}
                      className={cn(
-                       "px-5 py-3 rounded-xl text-sm font-bold border transition-all shadow-sm",
+                       "px-5 py-3 rounded-xl text-sm font-bold border transition-all shadow-sm flex items-center gap-2",
                        isSelected 
                          ? "bg-slate-900 text-white border-slate-900 shadow-slate-200" 
                          : "bg-white text-slate-600 border-gray-200 hover:border-slate-300"
                      )}
-                     // ✅ THEME FIX: Add inline style for hover effect logic if needed, 
-                     // but standard slate-900 for active state is usually neutral enough.
                    >
-                     {opt}
+                     {cond}
+                     {isSelected && <Check size={14} strokeWidth={3} />}
                    </button>
                  );
                })}
@@ -102,7 +119,7 @@ export const ProductConfigurator = ({
           </div>
         )}
 
-        {/* Render Other Specs */}
+        {/* Other Specs */}
         {Object.entries(options).map(([key, values]) => {
            if (key === 'condition') return null;
            
@@ -121,13 +138,11 @@ export const ProductConfigurator = ({
                         disabled={!available}
                         className={cn(
                           "px-4 py-2 rounded-lg text-sm font-bold border transition-all min-w-[3rem]",
-                          !available && "bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed decoration-slice",
-                          // Base style for available unselected
-                          available && !selected && "bg-white border-gray-200 text-slate-700 hover:border-slate-300"
+                          !available && "bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed decoration-slice line-through",
+                          available && !selected && "bg-white border-gray-200 text-slate-700 hover:border-slate-300",
                         )}
-                        // ✅ THEME FIX: Dynamic Active State
                         style={selected ? {
-                            backgroundColor: 'rgba(var(--primary-rgb), 0.05)', // Fallback if variable not set
+                            backgroundColor: 'rgba(var(--primary-rgb), 0.05)',
                             borderColor: 'var(--primary)',
                             color: 'var(--primary)',
                             boxShadow: '0 0 0 1px var(--primary)'
@@ -151,25 +166,24 @@ export const ProductConfigurator = ({
             </div>
             <div>
                <h4 className="font-bold text-slate-900 text-sm">
-                 {isOutOfStock ? "Ships from USA Warehouse" : "Available for Instant Delivery"}
+                 {isOutOfStock ? "Ships from Warehouse" : "Available for Instant Delivery"}
                </h4>
                <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
                  {isOutOfStock 
                    ? "This config is sourced on-demand. Arrives in 14-21 days." 
-                   : "Order within 4 hrs to get it today in Accra."}
+                   : "Order within 4 hrs to get it today."}
                </p>
             </div>
          </div>
          <div className="w-full h-px bg-gray-200" />
          <div className="flex gap-4">
             <div className="bg-white p-2.5 rounded-full h-fit border border-gray-100 shadow-sm">
-               {/* ✅ THEME FIX */}
                <ShieldCheck style={{ color: 'var(--primary)' }} size={20} />
             </div>
             <div>
                <h4 className="font-bold text-slate-900 text-sm">Authenticity Guarantee</h4>
                <p className="text-xs text-slate-500 mt-0.5">
-                 Verified {selections.condition} device with 6-month warranty.
+                 Verified {selections.condition || 'authentic'} device.
                </p>
             </div>
          </div>
@@ -184,7 +198,6 @@ export const ProductConfigurator = ({
              "flex-1 py-4 rounded-xl font-bold text-lg transition-all shadow-xl flex items-center justify-center gap-2 active:scale-[0.98]",
              (!currentVariant || isOutOfStock) && "opacity-50 cursor-not-allowed bg-slate-300 text-slate-500 shadow-none"
            )}
-           // ✅ THEME FIX: Dynamic Background
            style={!currentVariant || isOutOfStock ? {} : {
                backgroundColor: isAdding ? '#16a34a' : 'var(--primary)',
                color: 'white',
@@ -192,16 +205,16 @@ export const ProductConfigurator = ({
            }}
          >
            {isAdding ? (
-              <><CheckCircle size={20} className="animate-in zoom-in spin-in-180"/> Added to Cart</>
+              <><Loader2 size={20} className="animate-spin"/> Added!</>
            ) : (
-              <><ShoppingCart size={20} /> {currentVariant ? 'Add to Cart' : 'Select Options'}</>
+              <><ShoppingCart size={20} /> {currentVariant ? (isOutOfStock ? 'Out of Stock' : 'Add to Cart') : 'Select Options'}</>
            )}
          </button>
       </div>
       
       {!currentVariant && Object.keys(selections).length > 0 && (
         <p className="text-red-500 text-xs font-bold flex items-center gap-2 bg-red-50 p-3 rounded-lg border border-red-100">
-           <AlertCircle size={16}/> This specific combination is not available in stock.
+           <AlertCircle size={16}/> This specific combination is not available.
         </p>
       )}
 

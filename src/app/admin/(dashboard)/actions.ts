@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase-server';
 import { getActiveStore } from "@/lib/services/admin-auth";
 import { revalidatePath } from 'next/cache';
 import { Database } from '@/lib/database.types';
-
+import { redirect } from 'next/navigation';
 // Helper Types
 type CategoryMetaRow = Database['public']['Tables']['category_metadata']['Row'];
 type AttributeData = {
@@ -373,7 +373,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   
   // 1. Security: Get the Store ID for the current user
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+  if (!user) redirect('/admin/login');
 
   const { data: store } = await supabase
     .from('stores')

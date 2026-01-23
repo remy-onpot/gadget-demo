@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useTransition, useMemo } from 'react';
-import { supabase } from '@/lib/supabase'; // Client-side client for fetching (Read)
-import { createAttribute, updateAttribute, deleteAttribute } from '@/app/admin/(dashboard)/actions'; // ✅ Secure Server Actions (Write)
+import { supabase } from '@/lib/supabase';
+import { useAdminData } from '@/hooks/useAdminData'; // Import the hook
+import { createAttribute, updateAttribute, deleteAttribute } from '@/app/admin/(dashboard)/actions';
 import { Database } from '@/lib/database.types'; 
 import { Plus, Trash2, Save, X, Loader2, Tags, Edit2, List } from 'lucide-react';
 import { toast } from 'sonner';
@@ -10,6 +11,9 @@ import { toast } from 'sonner';
 type AttributeOption = Database['public']['Tables']['attribute_options']['Row'];
 
 export default function AttributesPage() {
+  // 1. Use the hook
+  const { storeId, loading: authLoading } = useAdminData();
+  
   const [attributes, setAttributes] = useState<AttributeOption[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -25,13 +29,14 @@ export default function AttributesPage() {
 
   const [isPending, startTransition] = useTransition();
   
-  // 1. FETCH DATA (Read via RLS)
-  // We use the client SDK here for simplicity. The Database RLS policies 
-  // we ran earlier ensure this query only returns attributes for YOUR store.
+  // 1. FETCH DATA - Wait for storeId
   const fetchAttributes = async () => {
+    if (!storeId) return;
+    
     const { data, error } = await supabase
       .from('attribute_options')
       .select('*')
+      .eq('store_id', storeId) // ✅ Use the ID from the hook
       .order('category', { ascending: true })
       .order('sort_order', { ascending: true });
         
@@ -39,7 +44,6 @@ export default function AttributesPage() {
         toast.error("Failed to load attributes");
     } else if (data) {
         setAttributes(data);
-        // Helper: Set default category to the first available one for speed
         if (data.length > 0 && !formData.category) {
             setFormData(prev => ({...prev, category: data[0].category}));
         }
@@ -48,9 +52,12 @@ export default function AttributesPage() {
   };
 
   useEffect(() => {
+    // 2. WAIT for the hook to find the store
+    if (!storeId) return;
+    
     fetchAttributes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [storeId]); // 👈 Only run when storeId is ready
   
   // 2. SUGGESTIONS (Memoized for performance)
   const suggestions = useMemo(() => {
@@ -59,7 +66,6 @@ export default function AttributesPage() {
     return { cats, keys };
   }, [attributes]);
 
-  // 3. HANDLE SAVE (Create/Update via Server Actions)
   const handleSave = () => {
     if (!formData.category) return toast.error("Category is required");
     if (!formData.key) return toast.error("Key is required");
@@ -68,18 +74,15 @@ export default function AttributesPage() {
     startTransition(async () => {
         try {
             if (editingId) {
-                // UPDATE
                 await updateAttribute(editingId, formData);
                 toast.success("Attribute updated");
             } else {
-                // CREATE
                 await createAttribute(formData);
                 toast.success("Attribute created");
             }
             
             setIsEditing(false);
             setEditingId(null);
-            // Reset form but keep category for rapid entry of similar items (e.g. Size S, Size M, Size L)
             setFormData(prev => ({ ...prev, value: '', sort_order: prev.sort_order + 10 })); 
             fetchAttributes(); 
 
@@ -89,7 +92,6 @@ export default function AttributesPage() {
     });
   };
   
-  // 4. HANDLE DELETE
   const handleDelete = (id: string) => {
     if (!confirm('Delete this option?')) return;
     
@@ -117,19 +119,18 @@ export default function AttributesPage() {
       setIsEditing(true);
     } else {
       setEditingId(null);
-      // Keep current category if set, else empty
       setFormData(prev => ({ ...prev, value: '', sort_order: 0 }));
       setIsEditing(true);
     }
   };
 
-  // Group by Category for UI
   const grouped = attributes.reduce((acc, curr) => {
      if (!acc[curr.category]) acc[curr.category] = [];
      acc[curr.category].push(curr);
      return acc;
   }, {} as Record<string, AttributeOption[]>);
 
+  if (authLoading) return <div className="p-20 flex justify-center"><Loader2 className="animate-spin text-slate-300"/></div>;
   if (loading) return <div className="p-20 flex justify-center"><Loader2 className="animate-spin text-slate-300"/></div>;
 
   return (

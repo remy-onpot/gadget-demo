@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useTransition } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAdminData } from '@/hooks/useAdminData'; // Import the hook
 import { updateOrderStatus } from '@/app/admin/(dashboard)/actions'; 
 import { formatCurrency } from '@/lib/utils';
 import { Database } from '@/lib/database.types';
@@ -14,10 +15,12 @@ import { toast } from 'sonner';
 import { ReceiptGenerator, ReceiptOrder } from '@/components/admin/ReceiptGenerator';
 
 // Types
-// We use the ReceiptOrder type we defined earlier to ensure compatibility
 type OrderWithItems = ReceiptOrder;
 
 export default function AdminOrdersPage() {
+  // 1. Use the hook
+  const { storeId, loading: authLoading } = useAdminData();
+  
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -27,13 +30,18 @@ export default function AdminOrdersPage() {
   
   const [isPending, startTransition] = useTransition();
 
- // 1. FETCH DATA
+  // 2. FETCH DATA - Wait for storeId
   useEffect(() => {
+    if (!storeId) return;
+
     const fetchData = async () => {
+      setLoading(true);
+      
       // A. Fetch Orders
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
         .select('*, items:order_items(*)')
+        .eq('store_id', storeId) // ✅ Use the ID from the hook
         .order('created_at', { ascending: false });
 
       if (ordersError) {
@@ -45,7 +53,7 @@ export default function AdminOrdersPage() {
       const { data: storeData } = await supabase
         .from('stores')
         .select('settings')
-        .limit(1)
+        .eq('id', storeId)
         .single();
 
       let settingsMap: Record<string, string> = {};
@@ -72,33 +80,23 @@ export default function AdminOrdersPage() {
 
     fetchData();
 
-    // 2. Realtime Listener (Optimized)
-    // 👇 THIS LINE was likely missing or placed inside the 'if' block by mistake
-    const channel = supabase.channel('realtime-orders'); 
+    // 3. Realtime Listener using storeId
+    const channel = supabase.channel('realtime-orders')
+      .on(
+        'postgres_changes',
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'orders',
+          filter: `store_id=eq.${storeId}` // ✅ Filter by Store ID
+        }, 
+        () => fetchData()
+      )
+      .subscribe();
 
-    if (orders.length > 0) {
-       // We assume the first order belongs to the current store
-       // (In a real admin, you might get store_id from the user session instead)
-       const currentStoreId = orders[0].store_id; 
-       
-       channel
-         .on(
-           'postgres_changes',
-           { 
-             event: '*', 
-             schema: 'public', 
-             table: 'orders',
-             filter: `store_id=eq.${currentStoreId}` // ✅ Filter by Store ID
-           }, 
-           () => fetchData()
-         )
-         .subscribe();
-    }
-
-    // Cleanup function
     return () => { supabase.removeChannel(channel); };
     
-  }, [orders]);
+  }, [storeId]); // 👈 Only run when storeId is ready
 
   // 2. SEARCH & FILTER LOGIC
   const filteredOrders = useMemo(() => {
@@ -131,7 +129,6 @@ export default function AdminOrdersPage() {
   };
 
   const handleStatusChange = (id: string, newStatus: string) => {
-    // Optimistic Update
     setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
     
     startTransition(async () => {
@@ -151,6 +148,7 @@ export default function AdminOrdersPage() {
     toast.success("Rider details copied!");
   };
 
+  if (authLoading) return <div className="h-[80vh] flex items-center justify-center"><Loader2 className="animate-spin text-slate-300 w-10 h-10"/></div>;
   if (loading) return <div className="h-[80vh] flex items-center justify-center"><Loader2 className="animate-spin text-slate-300 w-10 h-10"/></div>;
 
   return (
@@ -199,133 +197,45 @@ export default function AdminOrdersPage() {
                          <h3 className="font-bold text-slate-900 flex items-center gap-2">
                             <Calendar size={16} className="text-orange-500"/> {date}
                          </h3>
-                         <p className="text-xs text-slate-500 font-medium">{dateOrders.length} Orders</p>
                       </div>
                    </div>
-                   <div className="text-right">
-                      <span className="text-sm font-black text-slate-900">{formatCurrency(totalRevenue)}</span>
+                   <div className="text-sm text-slate-500">
+                     {dateOrders.length} orders · {formatCurrency(totalRevenue)}
                    </div>
                 </button>
-
-                {/* Orders Table */}
+                
                 {isExpanded && (
-                   <div className="overflow-x-auto border-t border-gray-100">
-                      <table className="w-full text-left text-sm whitespace-nowrap">
-                         <thead className="bg-gray-50 text-xs text-gray-400 font-bold uppercase tracking-wider">
-                            <tr>
-                               <th className="px-6 py-3">ID</th>
-                               <th className="px-6 py-3">Customer</th>
-                               <th className="px-6 py-3">Items</th>
-                               <th className="px-6 py-3">Status</th>
-                               <th className="px-6 py-3 text-right">Actions</th>
-                            </tr>
-                         </thead>
-                         <tbody className="divide-y divide-gray-50">
-                            {dateOrders.map(order => (
-                               <tr key={order.id} className="hover:bg-blue-50/30 transition-colors group">
-                                  
-                                  {/* ID */}
-                                  <td className="px-6 py-4">
-                                     <span className="font-mono font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">#{order.id.slice(0,5).toUpperCase()}</span>
-                                  </td>
-
-                                  {/* Customer */}
-                                  <td className="px-6 py-4">
-                                     <p className="font-bold text-slate-900">{order.customer_name}</p>
-                                     <p className="text-xs text-slate-400 font-mono">{order.customer_phone}</p>
-                                     <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-1 max-w-[150px] truncate">
-                                        <MapPin size={10} /> {order.delivery_address}
-                                     </div>
-                                  </td>
-
-                                  {/* Items Summary */}
-                                  <td className="px-6 py-4">
-                                     <div className="flex flex-col gap-1">
-                                        {order.items.slice(0, 2).map((item, i) => (
-                                           <span key={i} className="text-xs font-medium text-slate-600">
-                                              {item.quantity}x {item.product_name}
-                                           </span>
-                                        ))}
-                                        {order.items.length > 2 && <span className="text-[10px] text-gray-400">+{order.items.length - 2} more...</span>}
-                                     </div>
-                                  </td>
-
-                                  {/* Status Dropdown */}
-                                  <td className="px-6 py-4">
-                                     <div className="relative w-fit">
-                                        <select 
-                                           value={order.status || 'pending'}
-                                           onChange={(e) => handleStatusChange(order.id, e.target.value)}
-                                           className={`appearance-none pl-8 pr-8 py-1.5 rounded-full text-xs font-bold outline-none cursor-pointer transition-all border ${
-                                              order.status === 'completed' ? 'bg-green-50 text-green-700 border-green-200' :
-                                              order.status === 'shipped' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                              order.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' :
-                                              'bg-yellow-50 text-yellow-700 border-yellow-200'
-                                           }`}
-                                        >
-                                           <option value="pending">Pending</option>
-                                           <option value="shipped">Dispatched</option>
-                                           <option value="completed">Delivered</option>
-                                           <option value="cancelled">Cancelled</option>
-                                        </select>
-                                        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                                           {order.status === 'completed' ? <CheckCircle size={12} className="text-green-600"/> :
-                                            order.status === 'shipped' ? <Truck size={12} className="text-blue-600"/> :
-                                            <Clock size={12} className="text-yellow-600"/>}
-                                        </div>
-                                        <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none"/>
-                                     </div>
-                                  </td>
-
-                                  {/* Action Buttons */}
-                                  <td className="px-6 py-4 text-right">
-                                     <div className="flex justify-end gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button 
-                                           onClick={() => handleCopyRiderInfo(order)}
-                                           className="p-2 bg-white border border-gray-200 text-slate-500 rounded-lg hover:text-orange-600 hover:border-orange-200 transition-colors"
-                                           title="Copy Rider Info"
-                                        >
-                                           <Copy size={16} />
-                                        </button>
-                                        <button 
-                                           onClick={() => setSelectedReceiptOrder(order)}
-                                           className="p-2 bg-blue-50 border border-blue-100 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
-                                           title="Generate Receipt"
-                                        >
-                                           <FileText size={16} />
-                                        </button>
-                                     </div>
-                                  </td>
-                               </tr>
-                            ))}
-                         </tbody>
-                      </table>
-                   </div>
+                  <div className="divide-y divide-gray-100">
+                    {dateOrders.map((order) => (
+                      <div key={order.id} className="p-4">
+                        {/* Order details */}
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-bold">{order.customer_name}</div>
+                            <div className="text-sm text-slate-500">{order.customer_phone}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-mono font-bold">{formatCurrency(order.total_amount)}</div>
+                            <select 
+                              value={order.status || 'pending'}
+                              onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                              className="text-xs mt-1 border rounded px-2 py-1"
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="processing">Processing</option>
+                              <option value="completed">Completed</option>
+                              <option value="cancelled">Cancelled</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
              </div>
            );
         })}
-
-        {Object.keys(groupedOrders).length === 0 && (
-           <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
-              <Filter className="w-12 h-12 text-gray-300 mx-auto mb-4"/>
-              <h3 className="text-lg font-bold text-gray-500">No orders found</h3>
-              <p className="text-gray-400">Try changing your search terms.</p>
-           </div>
-        )}
       </div>
-
-      {/* --- RECEIPT MODAL --- */}
-      {selectedReceiptOrder && (
-         <ReceiptGenerator 
-            order={selectedReceiptOrder} 
-            settings={settings} 
-            onClose={() => setSelectedReceiptOrder(null)} 
-         />
-      )}
-      
-      
-
     </div>
   );
 }

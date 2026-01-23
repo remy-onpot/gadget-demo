@@ -115,6 +115,7 @@ const NavItem = ({ href, icon, label, active, onClick }: NavItemProps) => (
   <Link 
     href={href} 
     onClick={onClick}
+    prefetch={false}
     className={`flex items-center gap-3 px-4 py-3 rounded-xl transition font-medium text-sm ${
       active 
       ? 'bg-orange-500 text-white shadow-lg shadow-orange-900/20' 
