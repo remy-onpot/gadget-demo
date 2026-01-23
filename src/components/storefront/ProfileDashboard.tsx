@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { User } from '@supabase/supabase-js';
 import { Database } from '@/lib/database.types';
-import { updateCustomerProfile } from '@/app/sites/[site]/account/actions'; // Import Action
+import { updateCustomerProfile } from '@/app/sites/[site]/account/actions'; 
 import { User as UserIcon, Lock, Package, Save, Loader2, LogOut, Phone, MapPin, Mail, Calendar, ChevronRight, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -14,7 +14,7 @@ type OrderRow = Database['public']['Tables']['orders']['Row'];
 
 interface ProfileDashboardProps {
   initialUser: User;
-  storeId: string; // ✅ Required for isolation
+  storeId: string;
 }
 
 export default function ProfileDashboard({ initialUser, storeId }: ProfileDashboardProps) {
@@ -37,6 +37,7 @@ export default function ProfileDashboard({ initialUser, storeId }: ProfileDashbo
 
   useEffect(() => {
     fetchProfileAndOrders();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchProfileAndOrders = async () => {
@@ -51,15 +52,16 @@ export default function ProfileDashboard({ initialUser, storeId }: ProfileDashbo
       setProfile(profileData);
       setFullName(profileData.full_name || '');
       setPhone(profileData.phone || '');
+      // Ensure we map the DB column 'shipping_address' to state 'address'
       setAddress(profileData.shipping_address || '');
     }
 
-    // 2. Get Orders (✅ Scoped to THIS store)
+    // 2. Get Orders
     const { data: ordersData } = await supabase
       .from('orders')
       .select('*')
       .eq('user_id', initialUser.id)
-      .eq('store_id', storeId) // 🔒 Critical Isolation
+      .eq('store_id', storeId)
       .order('created_at', { ascending: false });
 
     if (ordersData) setOrders(ordersData);
@@ -250,11 +252,11 @@ export default function ProfileDashboard({ initialUser, storeId }: ProfileDashbo
                                 <div>
                                    <p className="font-bold text-slate-900">Order #{order.id.slice(0,8)}</p>
                                    <p className="text-xs text-slate-500 font-medium flex items-center gap-1 mt-1">
-   <Calendar size={10} /> 
-   {order.created_at 
-     ? new Date(order.created_at).toLocaleDateString() 
-     : 'Just now'}
-</p>
+                                      <Calendar size={10} /> 
+                                      {order.created_at 
+                                        ? new Date(order.created_at).toLocaleDateString() 
+                                        : 'Just now'}
+                                   </p>
                                 </div>
                              </div>
                              
@@ -281,7 +283,7 @@ export default function ProfileDashboard({ initialUser, storeId }: ProfileDashbo
         </div>
       </div>
       
-      {/* Dynamic Styles for inputs/buttons to reduce clutter */}
+      {/* Dynamic Styles */}
       <style jsx>{`
         .input-field {
             @apply w-full pl-10 p-3 bg-slate-50 border-transparent focus:bg-white border-2 focus:border-[var(--primary)] rounded-xl font-bold text-slate-900 outline-none transition-all;
@@ -296,7 +298,15 @@ export default function ProfileDashboard({ initialUser, storeId }: ProfileDashbo
 
 // ---------------- SUB-COMPONENTS ----------------
 
-function NavButton({ active, onClick, icon, label, desc }: any) {
+interface NavButtonProps {
+    active: boolean;
+    onClick: () => void;
+    icon: ReactNode;
+    label: string;
+    desc: string;
+}
+
+function NavButton({ active, onClick, icon, label, desc }: NavButtonProps) {
   return (
     <button 
       onClick={onClick}
@@ -317,7 +327,13 @@ function NavButton({ active, onClick, icon, label, desc }: any) {
   );
 }
 
-function InputGroup({ label, icon, children }: any) {
+interface InputGroupProps {
+    label: string;
+    icon: ReactNode;
+    children: ReactNode;
+}
+
+function InputGroup({ label, icon, children }: InputGroupProps) {
    return (
       <div className="space-y-1.5">
          <label className="text-xs font-bold uppercase text-slate-400 ml-1">{label}</label>

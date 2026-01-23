@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useTransition } from 'react';
 import { supabase } from '@/lib/supabase';
 import { CategorySection, FilterRule } from '@/lib/types';
-import { saveCategorySection, deleteCategorySection } from '@/app/admin/actions'; 
+import { saveCategorySection, deleteCategorySection } from '@/app/admin/(dashboard)/actions'; 
 import { Plus, Trash2, Save, Layout, Filter, Settings2, ChevronRight, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 

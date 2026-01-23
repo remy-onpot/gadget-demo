@@ -4,86 +4,135 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
-// 1. RATE LIMITER CONFIGURATION
-// We use ephemeral caching for speed.
+// --- CONFIGURATION ---
+
+// 1. Define the Matcher
+// This is the #1 fix for your "50 logs a minute" issue.
+// We strictly exclude static files, images, and next.js internals.
+export const config = {
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - images (svg, png, jpg, jpeg, gif, webp)
+     */
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
+};
+
+// 2. Initialize Redis (Outside handler for performance)
+// We use a try/catch in the handler in case env vars are missing during build
 const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  url: process.env.UPSTASH_REDIS_REST_URL || "",
+  token: process.env.UPSTASH_REDIS_REST_TOKEN || "",
 });
 
-// Define limits: 
-// - Public: 20 requests per 10 seconds (Browsing)
-// - Auth/Sensitive: 5 requests per 10 seconds (Login/Checkout)
 const ratelimitPublic = new Ratelimit({
   redis: redis,
-  limiter: Ratelimit.slidingWindow(20, "10 s"),
+  limiter: Ratelimit.slidingWindow(20, "10 s"), // 20 requests per 10s
 });
 
 const ratelimitSensitive = new Ratelimit({
   redis: redis,
-  limiter: Ratelimit.slidingWindow(5, "10 s"),
+  limiter: Ratelimit.slidingWindow(5, "10 s"), // 5 requests per 10s
 });
-
-export const config = {
-  matcher: ["/((?!api/|_next/|_static/|_vercel|[\\w-]+\\.\\w+).*)"],
-};
 
 export default async function middleware(req: NextRequest) {
   const url = req.nextUrl;
   const path = url.pathname;
-const ip = req.headers.get("x-forwarded-for") ?? "127.0.0.1";  
+  const hostname = req.headers.get("host");
+
   // --- PHASE 1: SECURITY SHIELD 🛡️ ---
   
-  // A. Rate Limiting
-  // Only limit strictly in production to avoid annoying dev experience
-  if (process.env.NODE_ENV === 'production') {
-    const isSensitive = path.startsWith('/checkout') || path.startsWith('/login') || path.startsWith('/api/auth');
-    const limiter = isSensitive ? ratelimitSensitive : ratelimitPublic;
-    
-    const { success, limit, reset, remaining } = await limiter.limit(`mw_${ip}`);
-    
-    if (!success) {
-      return new NextResponse("Too Many Requests", {
-        status: 429,
-        headers: {
-          "X-RateLimit-Limit": limit.toString(),
-          "X-RateLimit-Remaining": remaining.toString(),
-          "X-RateLimit-Reset": reset.toString(),
-        },
-      });
+  // A. Rate Limiting (Production Only)
+  // We wrap this in try/catch to "Fail Open". 
+  // If Redis is down, we allow the traffic rather than crashing the site.
+  if (process.env.NODE_ENV === 'production' && process.env.UPSTASH_REDIS_REST_URL) {
+    try {
+      const ip = req.headers.get("x-forwarded-for")?.split(',')[0] ?? "127.0.0.1";
+      const isSensitive = path.startsWith('/checkout') || path.startsWith('/login') || path.startsWith('/api/auth');
+      const limiter = isSensitive ? ratelimitSensitive : ratelimitPublic;
+      
+      const { success, limit, reset, remaining } = await limiter.limit(`mw_${ip}`);
+      
+      if (!success) {
+        return new NextResponse("Too Many Requests", {
+          status: 429,
+          headers: {
+            "X-RateLimit-Limit": limit.toString(),
+            "X-RateLimit-Remaining": remaining.toString(),
+            "X-RateLimit-Reset": reset.toString(),
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Rate limit error:", error);
+      // Proceed without limiting if Redis fails
     }
   }
 
-  // B. Host Header Validation (Prevent Host Header Injection)
-  const hostname = req.headers.get("host");
+  // B. Host Header Validation
   if (!hostname) return new NextResponse("Bad Request", { status: 400 });
 
+  // --- PHASE 2: SUBDOMAIN & ROUTING PREP 🌐 ---
+
   const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'localhost:3000';
-  const allowedDomains = [rootDomain, "www." + rootDomain];
-  
-  // --- PHASE 2: SUBDOMAIN PARSING 🌐 ---
-  
   let subdomain = "app"; // Default to Landing/Admin
 
-  // Handle Localhost vs Production
   const isLocalhost = hostname.includes("localhost") || hostname.includes("127.0.0.1");
   
   if (!isLocalhost) {
-      // Determine subdomain
       const currentHost = hostname.replace(`.${rootDomain}`, "");
       if (currentHost !== hostname) {
           subdomain = currentHost;
       }
   }
 
-  // 🔧 DEV OVERRIDE
+  // 🔧 DEV OVERRIDE (Allows testing subdomains on localhost via ?site=nike)
   if (url.searchParams.has("site")) {
       subdomain = url.searchParams.get("site")!;
   }
 
-  // --- PHASE 3: SUPABASE AUTH REFRESH 🔐 ---
+  // --- PHASE 3: CREATE THE RESPONSE OBJECT 🚦 ---
   
-  let response = NextResponse.next({ request: { headers: req.headers } });
+  let response: NextResponse;
+
+  // Prepare Headers for Server Components
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-pathname", path);
+  requestHeaders.set("x-url", req.url);
+  requestHeaders.set("x-forwarded-host", hostname); 
+  requestHeaders.set("x-origin", req.headers.get("origin") || "");
+
+  // Logic: Admin Redirect Safety
+  if (subdomain !== "app" && subdomain !== "www" && path.startsWith("/admin")) {
+      const mainAppUrl = new URL(path, req.url);
+      mainAppUrl.hostname = isLocalhost ? "localhost" : rootDomain;
+      mainAppUrl.port = url.port;
+      return NextResponse.redirect(mainAppUrl);
+  }
+
+  // Logic: Determine Rewrite vs Pass-through
+  if (subdomain === "app" || subdomain === "www") {
+      // Main App / Landing Page / Admin Dashboard
+      response = NextResponse.next({
+          request: { headers: requestHeaders },
+      });
+  } else {
+      // Storefront Rewrite (e.g. nike.nimdeshop.com -> /sites/nike)
+      const newUrl = new URL(`/sites/${subdomain}${path}`, req.url);
+      newUrl.search = url.search;
+      
+      response = NextResponse.rewrite(newUrl, {
+          request: { headers: requestHeaders },
+      });
+  }
+
+  // --- PHASE 4: SUPABASE AUTH 🔐 ---
+  // We refresh the session here to keep the user logged in.
+  // We MUST use the 'response' object created above so cookies persist.
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -93,7 +142,7 @@ const ip = req.headers.get("x-forwarded-for") ?? "127.0.0.1";
         get(name: string) { return req.cookies.get(name)?.value; },
         set(name: string, value: string, options: CookieOptions) {
           req.cookies.set({ name, value, ...options });
-          response.cookies.set({ name, value, ...options });
+          response.cookies.set({ name, value, ...options }); 
         },
         remove(name: string, options: CookieOptions) {
           req.cookies.set({ name, value: '', ...options });
@@ -103,51 +152,17 @@ const ip = req.headers.get("x-forwarded-for") ?? "127.0.0.1";
     }
   );
 
-  // Refresh session if expired
   await supabase.auth.getUser();
 
-  // --- PHASE 4: SECURITY HEADERS INJECTION 💉 ---
+  // --- PHASE 5: SECURITY HEADERS 💉 ---
   
-  // Prevent Clickjacking (iframe protection)
-  // We allow SAMEORIGIN so you can iframe your own content if needed
   response.headers.set("X-Frame-Options", "SAMEORIGIN");
-  
-  // Prevent MIME type sniffing
   response.headers.set("X-Content-Type-Options", "nosniff");
-  
-  // Control information sent to other sites
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   
-  // Enforce HTTPS (HSTS) - Production Only
   if (process.env.NODE_ENV === 'production') {
       response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
   }
 
-  // --- PHASE 5: ROUTING LOGIC 🚦 ---
-
-  // A. Admin/App Redirects
-  // If a user tries to access /admin on a subdomain (e.g., nike.nimdeshop.com/admin),
-  // redirect them to the main app URL to avoid auth confusion.
-  if (subdomain !== "app" && subdomain !== "www" && path.startsWith("/admin")) {
-      const mainAppUrl = new URL(path, req.url);
-      mainAppUrl.hostname = isLocalhost ? hostname : rootDomain;
-      mainAppUrl.port = url.port;
-      return NextResponse.redirect(mainAppUrl);
-  }
-
-  // B. Main App / Admin Dashboard
-  if (subdomain === "app" || subdomain === "www") {
-      // Optional: Add specific logic for the main landing page or admin app here
-      return response;
-  }
-
-  // C. Storefront Rewrite
-  // Rewrite traffic to src/app/_sites/[site]
-  // We use `_sites` (underscore) so it's not routeable by default in Next.js file system
-  const newUrl = new URL(`/sites/${subdomain}${path}`, req.url);
-  
-  // Preserve query params
-  newUrl.search = url.search;
-  
-  return NextResponse.rewrite(newUrl);
+  return response;
 }

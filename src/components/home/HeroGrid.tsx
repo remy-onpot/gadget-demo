@@ -1,23 +1,28 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Banner } from '@/lib/types';
+import { Database } from '@/lib/database.types'; // ✅ Correct Import
+
+// ✅ Use Centralized Type
+type BannerRow = Database['public']['Tables']['banners']['Row'];
 
 interface HeroGridProps {
-  banners: Banner[];
+  banners: BannerRow[];
 }
 
 export const HeroGrid = ({ banners }: HeroGridProps) => {
-  const mainHeroes = banners.filter(b => b.slot === 'main_hero');
-  const sideTops = banners.filter(b => b.slot === 'side_top');
-  const sideBottoms = banners.filter(b => b.slot === 'side_bottom');
+  // Filter active banners
+  const mainHeroes = banners.filter(b => b.slot === 'main_hero' && b.is_active);
+  const sideTops = banners.filter(b => b.slot === 'side_top' && b.is_active);
+  const sideBottoms = banners.filter(b => b.slot === 'side_bottom' && b.is_active);
 
   const [indices, setIndices] = useState({ main: 0, top: 0, bottom: 0 });
 
+  // Auto-Rotate Logic
   useEffect(() => {
     const interval = setInterval(() => {
       setIndices(prev => ({
@@ -29,7 +34,29 @@ export const HeroGrid = ({ banners }: HeroGridProps) => {
     return () => clearInterval(interval);
   }, [mainHeroes.length, sideTops.length, sideBottoms.length]);
 
-  if (mainHeroes.length === 0 && sideTops.length === 0 && sideBottoms.length === 0) return null;
+  // --- FALLBACK STATE ---
+  // If no banners exist, show a "Welcome" placeholder instead of empty space
+  if (mainHeroes.length === 0 && sideTops.length === 0 && sideBottoms.length === 0) {
+      return (
+          <section className="px-3 md:px-4 mb-8">
+              <div className="container mx-auto max-w-[1600px] h-[300px] md:h-[450px] rounded-3xl bg-slate-900 relative overflow-hidden flex items-center justify-center text-center p-6">
+                  {/* Grainy Gradient Background */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-900 via-slate-900 to-black" />
+                  <div className="absolute inset-0 opacity-20 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] mix-blend-overlay"></div>
+                  
+                  <div className="relative z-10 max-w-2xl">
+                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-blue-200 text-xs font-bold uppercase tracking-wider mb-4 backdrop-blur-md">
+                         <ShoppingBag size={14} /> Welcome to Our Store
+                      </div>
+                      <h1 className="text-3xl md:text-6xl font-black text-white mb-6">Discover Premium Quality</h1>
+                      <Link href="/search" className="inline-flex items-center gap-2 bg-white text-slate-900 px-6 py-3 rounded-full font-bold hover:bg-blue-50 transition-colors">
+                          Start Shopping <ArrowRight size={18} />
+                      </Link>
+                  </div>
+              </div>
+          </section>
+      );
+  }
 
   const activeMain = mainHeroes[indices.main];
   const activeTop = sideTops[indices.top];
@@ -75,33 +102,37 @@ export const HeroGrid = ({ banners }: HeroGridProps) => {
                         {activeMain.title}
                       </h1>
                       
-                      <p className="hidden xs:block text-white/90 text-xs md:text-lg lg:text-xl font-medium leading-relaxed max-w-sm md:max-w-lg drop-shadow-md line-clamp-2">
-                        {activeMain.description}
-                      </p>
+                      {activeMain.description && (
+                          <p className="hidden xs:block text-white/90 text-xs md:text-lg lg:text-xl font-medium leading-relaxed max-w-sm md:max-w-lg drop-shadow-md line-clamp-2">
+                            {activeMain.description}
+                          </p>
+                      )}
                       
-                      <Link 
-                        href={activeMain.link_url} 
-                        className="inline-flex items-center gap-2 bg-white text-slate-900 pl-4 pr-1.5 py-1.5 md:pl-8 md:pr-2 md:py-3 rounded-full font-bold text-xs md:text-lg shadow-lg hover:scale-105 transition-transform mt-1"
-                      >
-                        <span>{activeMain.cta_text || 'Shop Now'}</span>
-                        <div className="w-6 h-6 md:w-10 md:h-10 bg-slate-900 rounded-full flex items-center justify-center text-white">
-                          <ArrowRight size={12} className="md:w-5 md:h-5"/>
-                        </div>
-                      </Link>
+                      {activeMain.link_url && (
+                          <Link 
+                            href={activeMain.link_url} 
+                            className="inline-flex items-center gap-2 bg-white text-slate-900 pl-4 pr-1.5 py-1.5 md:pl-8 md:pr-2 md:py-3 rounded-full font-bold text-xs md:text-lg shadow-lg hover:scale-105 transition-transform mt-1"
+                          >
+                            <span>{activeMain.cta_text || 'Shop Now'}</span>
+                            <div className="w-6 h-6 md:w-10 md:h-10 bg-slate-900 rounded-full flex items-center justify-center text-white">
+                              <ArrowRight size={12} className="md:w-5 md:h-5"/>
+                            </div>
+                          </Link>
+                      )}
                     </div>
                   </div>
 
-                  {/* Image - DESKTOP FIX: Huge Scale + Anchored Right */}
+                  {/* Image */}
                   <div className="absolute bottom-0 right-0 w-[55%] h-[90%] md:w-[55%] md:h-[90%] z-10 pointer-events-none">
-                     <div className="relative w-full h-full">
-                        <Image 
-                          src={activeMain.image_url}
-                          fill
-                          className="object-contain object-bottom-right drop-shadow-[-10px_10px_20px_rgba(0,0,0,0.4)]"
-                          alt={activeMain.title}
-                          priority
-                        />
-                     </div>
+                      <div className="relative w-full h-full">
+                         <Image 
+                           src={activeMain.image_url}
+                           fill
+                           className="object-contain object-bottom-right drop-shadow-[-10px_10px_20px_rgba(0,0,0,0.4)]"
+                           alt={activeMain.title || 'Main Hero'}
+                           priority // ✅ High Priority for LCP
+                         />
+                      </div>
                   </div>
                 </motion.div>
               )}
@@ -123,13 +154,13 @@ export const HeroGrid = ({ banners }: HeroGridProps) => {
             {/* TOP SIDE */}
             <div className="relative rounded-2xl md:rounded-[2.5rem] overflow-hidden group shadow-lg bg-[#0F172A]">
               <AnimatePresence mode="wait">
-                {activeTop && (
+                {activeTop ? (
                   <motion.div
                     key={activeTop.id}
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                     className="absolute inset-0 w-full h-full"
                   >
-                    <Link href={activeTop.link_url} className="block w-full h-full relative p-4 md:p-8 flex flex-col justify-center items-start z-20">
+                    <Link href={activeTop.link_url || '#'} className="block w-full h-full relative p-4 md:p-8 flex flex-col justify-center items-start z-20">
                         {/* Overlay */}
                         <div className="absolute inset-0 bg-gradient-to-r from-slate-900/90 via-slate-900/20 to-transparent z-0"></div>
                         
@@ -139,12 +170,17 @@ export const HeroGrid = ({ banners }: HeroGridProps) => {
                           <span className="text-[10px] md:text-xs font-bold text-white/70 border-b border-white/20 pb-0.5 group-hover:text-white group-hover:border-white transition-all">Shop Now</span>
                         </div>
 
-                        {/* Image - Pushed way to the right and scaled up */}
+                        {/* Image */}
                         <div className="absolute bottom-0 right-[5%] w-[70%] h-[90%] md:h-[90%] z-10">
-                           <Image src={activeTop.image_url} fill className="object-contain object-bottom-right drop-shadow-xl" alt={activeTop.title}/>
+                           <Image src={activeTop.image_url} fill className="object-contain object-bottom-right drop-shadow-xl" alt={activeTop.title || 'Offer'}/>
                         </div>
                     </Link>
                   </motion.div>
+                ) : (
+                   /* Empty State for Side Top */
+                   <div className="absolute inset-0 flex items-center justify-center bg-slate-800 text-slate-600 font-bold text-xs uppercase tracking-widest">
+                       Details Coming Soon
+                   </div>
                 )}
               </AnimatePresence>
             </div>
@@ -152,13 +188,13 @@ export const HeroGrid = ({ banners }: HeroGridProps) => {
             {/* BOTTOM SIDE */}
             <div className="relative rounded-2xl md:rounded-[2.5rem] overflow-hidden group shadow-lg bg-white border border-gray-100">
               <AnimatePresence mode="wait">
-                {activeBottom && (
+                {activeBottom ? (
                   <motion.div
                     key={activeBottom.id}
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                     className="absolute inset-0 w-full h-full"
                   >
-                      <Link href={activeBottom.link_url} className="block w-full h-full relative p-4 md:p-8 flex items-center">
+                      <Link href={activeBottom.link_url || '#'} className="block w-full h-full relative p-4 md:p-8 flex items-center">
                         {/* Overlay */}
                         <div className="absolute inset-0 bg-gradient-to-r from-white/95 via-white/50 to-transparent z-10"></div>
 
@@ -172,10 +208,15 @@ export const HeroGrid = ({ banners }: HeroGridProps) => {
 
                         {/* Image */}
                         <div className="absolute bottom-0 right-5 w-[50%] h-[90%] md:w-[60%] md:h-[90%] z-0">
-                            <Image src={activeBottom.image_url} fill className="object-contain object-bottom-right drop-shadow-lg" alt={activeBottom.title}/>
+                            <Image src={activeBottom.image_url} fill className="object-contain object-bottom-right drop-shadow-lg" alt={activeBottom.title || 'Deal'}/>
                         </div>
                       </Link>
                   </motion.div>
+                ) : (
+                    /* Empty State for Side Bottom */
+                   <div className="absolute inset-0 flex items-center justify-center bg-slate-50 text-slate-400 font-bold text-xs uppercase tracking-widest">
+                       Stay Tuned
+                   </div>
                 )}
               </AnimatePresence>
             </div>

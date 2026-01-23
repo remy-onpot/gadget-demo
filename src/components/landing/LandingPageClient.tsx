@@ -12,6 +12,7 @@ import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { GetStartedButton } from "@/components/landing/GetStartedButton";
 import { Footer } from "@/components/landing/Footer"; 
+import { StoreSearch } from '@/components/landing/StoreSearch'; 
 
 // --- ANIMATION VARIANTS ---
 const fadeUp: Variants = {
@@ -67,11 +68,11 @@ export default function LandingPageClient() {
         <div className="absolute inset-0 z-0 opacity-[0.03]" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '50px 50px' }} />
 
         {/* 3D Silhouettes */}
-        <motion.div style={{ y: heroY }} className="absolute inset-0 z-0 flex items-center justify-center opacity-30 md:opacity-80 pointer-events-none mix-blend-screen">
-           <div className="absolute bottom-0 left-[-5%] w-[45%] h-[85%]">
+        <motion.div style={{ y: heroY }} className="absolute inset-0 z-0 flex items-center justify-center opacity-70 md:opacity-80 pointer-events-none mix-blend-screen">
+           <div className="absolute bottom-0 right-[-5%] w-[45%] h-[75%]">
               <Image src="/hero-man.png" alt="Man" fill className="object-contain object-bottom drop-shadow-[0_0_50px_rgba(59,130,246,0.3)]" priority />
            </div>
-           <div className="absolute bottom-0 right-[-5%] w-[45%] h-[85%]">
+           <div className="absolute bottom-0 left-[-5%] w-[45%] h-[95%]">
               <Image src="/hero-woman.png" alt="Woman" fill className="object-contain object-bottom drop-shadow-[0_0_50px_rgba(37,211,102,0.2)]" priority />
            </div>
         </motion.div>
@@ -260,6 +261,7 @@ export default function LandingPageClient() {
 
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
+
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 50);
     window.addEventListener("scroll", handleScroll);
@@ -269,36 +271,58 @@ const Navbar = () => {
   return (
     <div className={cn(
       "fixed top-0 left-0 right-0 z-50 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
-      isScrolled ? "py-4 px-4 md:px-0 flex justify-center" : "py-0 px-0"
+      isScrolled ? "py-2 px-2 md:py-4 md:px-0 flex justify-center" : "py-0 px-0"
     )}>
       <nav className={cn(
-        "flex items-center justify-between transition-all duration-500",
+        "flex items-center justify-between transition-all duration-500 gap-3",
         isScrolled 
-          ? "w-full max-w-4xl bg-[#0a0a0a]/80 border border-white/10 shadow-2xl backdrop-blur-xl rounded-2xl px-6 py-3" 
-          : "w-full h-20 bg-[#020617]/70 border-b border-white/5 backdrop-blur-md px-6"
+          // Scrolled: Lighter Grey (Slate-900) instead of Black
+          ? "w-full max-w-4xl bg-slate-900/90 border border-white/10 shadow-2xl backdrop-blur-xl rounded-2xl px-4 py-3 md:px-6" 
+          // Top: Even Lighter Grey (Slate-800) for better visibility
+          : "w-full h-24 bg-slate-800/80 border-b border-white/5 backdrop-blur-md px-4 md:px-6" 
       )}>
-        <div className="flex items-center gap-3 group cursor-pointer">
-           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(37,99,235,0.5)] group-hover:scale-105 transition-transform">
-              <Store className="text-white" size={16} />
+        
+        {/* LOGO SECTION */}
+        <div className="flex items-center gap-2 group cursor-pointer shrink-0">
+           
+           {/* 1. CUSTOM SVG LOGO */}
+           {/* Removed white box. Increased size significantly to w-14 (56px) / w-16 (64px) */}
+           <div className="relative w-14 h-14 md:w-16 md:h-16 group-hover:scale-105 transition-transform shrink-0">
+              <Image 
+                src="/logo.svg" 
+                alt="NimdeShop Logo" 
+                fill 
+                className="object-contain" // Removed padding to maximize size
+                priority
+              />
            </div>
-           <div className="flex flex-col leading-none justify-center">
-              <span className="text-lg font-black tracking-tight text-white flex items-baseline">
-                  Nimde<span className="font-normal text-slate-400 ml-[1px]">Shop</span>
+           
+           {/* 2. BRAND NAME */}
+           <div className="hidden md:flex flex-col leading-none justify-center">
+              <span className="text-xl font-black tracking-tight text-white flex items-baseline">
+                  Nimde<span className="text-green-500 ml-[1px]">Shop</span>
               </span>
            </div>
         </div>
-        <div className="hidden md:flex items-center gap-8 text-sm font-bold text-slate-400">
+
+        {/* MIDDLE LINKS (Desktop Only) */}
+        <div className="hidden md:flex items-center gap-8 text-sm font-bold text-slate-300 shrink-0">
            <Link href="#features" className="hover:text-white transition-colors">Features</Link>
            <Link href="#pricing" className="hover:text-white transition-colors">Pricing</Link>
         </div>
-        <div className="flex items-center gap-4">
-           <Link href="/login" className="hidden md:block text-sm font-bold text-white hover:text-blue-400 transition-colors">Login</Link>
-           <GetStartedButton variant="nav" text="Start Selling" className={cn("transition-all", isScrolled ? "h-9 px-4 text-xs" : "h-10 px-5 text-sm")} />
+
+        {/* SEARCH BAR */}
+        <div className="flex-1 md:flex-none flex justify-end md:w-auto min-w-0">
+           <div className="w-full max-w-[260px] md:max-w-xs md:w-[240px]">
+              <StoreSearch variant="minimal" className="w-full" />
+           </div>
         </div>
+
       </nav>
     </div>
   );
 };
+
 
 const BentoCard = ({ children, className }: { children: React.ReactNode, className?: string }) => {
   const divRef = useRef<HTMLDivElement>(null);

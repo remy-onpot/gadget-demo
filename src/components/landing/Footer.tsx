@@ -5,14 +5,15 @@ import {
   Twitter, 
   Instagram, 
   Linkedin, 
-  Store, 
   Mail, 
   MapPin, 
   Clock, 
   ArrowRight,
-  ShieldCheck
+  ShieldCheck,
+  Store // Added icon for showcase
 } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export const Footer = () => {
   const currentYear = new Date().getFullYear();
@@ -26,10 +27,20 @@ export const Footer = () => {
            {/* COL 1: BRAND IDENTITY (Span 4) */}
            <div className="md:col-span-4 space-y-6">
               <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-[0_0_20px_rgba(37,99,235,0.3)]">
-                    <Store size={20} />
+                 {/* 1. LOGO IMAGE */}
+                 <div className="relative w-10 h-10 md:w-12 md:h-12 shrink-0">
+                    <Image 
+                       src="/logo.svg" 
+                       alt="NimdeShop Logo" 
+                       fill 
+                       className="object-contain"
+                    />
                  </div>
-                 <span className="text-2xl font-black text-white tracking-tight">Nimde<span className="font-normal text-slate-500">Shop</span></span>
+                 
+                 {/* 2. TEXT LOGO */}
+                 <span className="text-2xl font-black text-white tracking-tight flex items-baseline">
+                   Nimde<span className="text-green-500 ml-[1px]">Shop</span>
+                 </span>
               </div>
               
               <p className="text-lg leading-relaxed max-w-sm text-slate-400">
@@ -37,9 +48,9 @@ export const Footer = () => {
               </p>
 
               <div className="flex gap-4 pt-2">
-                 <SocialLink href="#" icon={<Twitter size={18} />} />
-                 <SocialLink href="#" icon={<Instagram size={18} />} />
-                 <SocialLink href="#" icon={<Linkedin size={18} />} />
+                 <SocialLink href="https://twitter.com" icon={<Twitter size={18} />} />
+                 <SocialLink href="https://instagram.com" icon={<Instagram size={18} />} />
+                 <SocialLink href="https://linkedin.com" icon={<Linkedin size={18} />} />
               </div>
            </div>
 
@@ -47,11 +58,18 @@ export const Footer = () => {
            <div className="md:col-span-2">
               <h4 className="text-white font-bold mb-6">Product</h4>
               <ul className="space-y-4">
-                 <FooterLink href="#features">Features</FooterLink>
-                 <FooterLink href="#pricing">Pricing</FooterLink>
-                 <FooterLink href="/showcase">Store Showcase</FooterLink>
-                 <FooterLink href="/login">Merchant Login</FooterLink>
-                 <FooterLink href="/changelog">Changelog <span className="text-[10px] bg-blue-900/50 text-blue-400 px-1.5 py-0.5 rounded ml-2">New</span></FooterLink>
+                 {/* ✅ Updated to absolute anchors so they work from other pages */}
+                 <FooterLink href="/#features">Features</FooterLink>
+                 <FooterLink href="/#pricing">Pricing</FooterLink>
+                 
+                 {/* ✅ Points to the Demo Store we built */}
+                 <li>
+                    <Link href="/sites/demo" className="hover:text-blue-400 transition-colors flex items-center gap-2">
+                       <Store size={14} className="text-green-500" /> Demo Store
+                    </Link>
+                 </li>
+                 
+                 <FooterLink href="/admin/login">Merchant Login</FooterLink>
               </ul>
            </div>
 
@@ -59,9 +77,9 @@ export const Footer = () => {
            <div className="md:col-span-2">
               <h4 className="text-white font-bold mb-6">Company</h4>
               <ul className="space-y-4">
+                 {/* These can remain as placeholders or link to real pages */}
                  <FooterLink href="/about">About Us</FooterLink>
                  <FooterLink href="/careers">Careers</FooterLink>
-                 <FooterLink href="/blog">Blog</FooterLink>
                  <FooterLink href="/legal/privacy">Privacy Policy</FooterLink>
                  <FooterLink href="/legal/terms">Terms of Service</FooterLink>
               </ul>
@@ -70,33 +88,32 @@ export const Footer = () => {
            {/* COL 4: CONTACT (Span 4) */}
            <div className="md:col-span-4 bg-white/5 border border-white/5 rounded-3xl p-8">
               <h4 className="text-white font-bold mb-6 flex items-center gap-2">
-                 <ShieldCheck className="text-blue-500" size={18}/> Contact Support
+                 <ShieldCheck className="text-green-500" size={18}/> Contact Support
               </h4>
               
               <div className="space-y-5 text-sm">
                  <div className="flex gap-4 items-start">
-                    <MapPin className="shrink-0 text-blue-500 mt-1" size={18} />
+                    <MapPin className="shrink-0 text-green-500 mt-1" size={18} />
                     <span>
                        Nimde Inc<br/>
-                       Accra,<br/>
-                       Ghana
+                       Accra, Ghana
                     </span>
                  </div>
                  
                  <div className="flex gap-4 items-center">
-                    <Mail className="shrink-0 text-blue-500" size={18} />
+                    <Mail className="shrink-0 text-green-500" size={18} />
                     <a href="mailto:ceo@nimdeshop.com" className="hover:text-white transition-colors">ceo@nimdeshop.com</a>
                  </div>
 
                  <div className="flex gap-4 items-center">
-                    <Clock className="shrink-0 text-blue-500" size={18} />
+                    <Clock className="shrink-0 text-green-500" size={18} />
                     <span>Mon - Sat: 9:00 AM - 6:00 PM</span>
                  </div>
               </div>
 
               <div className="mt-8 pt-6 border-t border-white/10">
-                 <Link href="/contact" className="text-white font-bold flex items-center gap-2 hover:gap-4 transition-all group">
-                    Get in touch <ArrowRight size={16} className="text-blue-500" />
+                 <Link href="mailto:ceo@nimdeshop.com" className="text-white font-bold flex items-center gap-2 hover:gap-4 transition-all group">
+                    Get in touch <ArrowRight size={16} className="text-green-500" />
                  </Link>
               </div>
            </div>
@@ -108,7 +125,7 @@ export const Footer = () => {
            <p>© {currentYear} Nimde Inc. All rights reserved.</p>
            <div className="flex gap-6">
               <span>Status: <span className="text-green-500">Operational</span></span>
-              <span>Made with shopers and owners in mind</span>
+              <span>Made in Accra 🇬🇭</span>
            </div>
         </div>
 
@@ -124,7 +141,7 @@ const SocialLink = ({ href, icon }: { href: string, icon: React.ReactNode }) => 
      href={href} 
      target="_blank" 
      rel="noopener noreferrer"
-     className="w-10 h-10 rounded-full bg-white/5 border border-white/5 flex items-center justify-center hover:bg-blue-600 hover:text-white hover:border-blue-500 transition-all duration-300"
+     className="w-10 h-10 rounded-full bg-white/5 border border-white/5 flex items-center justify-center hover:bg-green-600 hover:text-white hover:border-green-500 transition-all duration-300"
    >
      {icon}
    </a>
@@ -132,7 +149,7 @@ const SocialLink = ({ href, icon }: { href: string, icon: React.ReactNode }) => 
 
 const FooterLink = ({ href, children }: { href: string, children: React.ReactNode }) => (
    <li>
-      <Link href={href} className="hover:text-blue-400 transition-colors flex items-center">
+      <Link href={href} className="hover:text-green-400 transition-colors flex items-center">
          {children}
       </Link>
    </li>

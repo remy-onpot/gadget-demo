@@ -1,22 +1,29 @@
 import { supabase } from '@/lib/supabase';
 
-export async function getGlobalData() {
-  // 1. Fetch Site Settings (Phone, Address, Socials, Description)
-  const { data: settingsData } = await supabase
-    .from('site_settings')
-    .select('*');
+// We now require storeId to ensure we only fetch data for the relevant store.
+export async function getGlobalData(storeId: string) {
+  if (!storeId) {
+    console.error("getGlobalData called without storeId");
+    return { settings: {}, categories: [] };
+  }
 
-  // Convert array to object for easy access: settings['key']
-  const settings = (settingsData || []).reduce((acc, curr) => {
-    acc[curr.key] = curr.value;
-    return acc;
-  }, {} as Record<string, string>);
+  // 1. Fetch Site Settings (Now stored in the 'stores' table JSON column)
+  const { data: storeData } = await supabase
+    .from('stores')
+    .select('settings')
+    .eq('id', storeId)
+    .single();
+
+  // Safely cast the JSON settings to the expected Record format
+  const settings = (storeData?.settings as Record<string, string>) || {};
 
   // 2. Fetch Active Categories (Dynamic Navigation)
-  // We look at actual products to see what categories exist
+  // ✅ SECURITY UPDATE: We now filter by 'store_id' so we don't leak 
+  // categories from other stores.
   const { data: products } = await supabase
     .from('products')
     .select('category')
+    .eq('store_id', storeId)
     .eq('is_active', true);
 
   // Get unique categories and sort them

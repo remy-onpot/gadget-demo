@@ -14,6 +14,8 @@ type AttributeData = {
   sort_order?: number;
 };
 type CategorySectionInsert = Database['public']['Tables']['category_sections']['Insert'];
+type ContentBlockUpdate = Database['public']['Tables']['content_blocks']['Update'];
+type BannerInsert = Database['public']['Tables']['banners']['Insert'];
 
 // Helper to enforce security
 async function getStoreOrThrow() {
@@ -63,9 +65,6 @@ export async function deleteOrder(orderId: string) {
 // ==========================================
 
 export async function updateProductStock(variantId: string, newStock: number) {
-  // Note: Variants don't have store_id directly, they link to products.
-  // Ideally, we check the product's store_id via a join, or trust the RLS policies.
-  // For V1 Admin Actions, we'll rely on the user being authenticated, but strict RLS is better.
   const supabase = await createClient();
   
   const { error } = await supabase
@@ -125,7 +124,7 @@ export async function updateStoreSettings(newSettings: Record<string, any>) {
   return { success: true };
 }
 
-// Legacy support (Deprecated, but keeps old components from crashing)
+// Legacy support
 export async function updateSiteSetting(key: string, value: string) {
     return updateStoreSettings({ [key]: value });
 }
@@ -147,7 +146,6 @@ export async function deleteBanner(id: string) {
   revalidatePath('/admin/banners');
   return { success: true };
 }
-type BannerInsert = Database['public']['Tables']['banners']['Insert'];
 
 export async function createBanner(data: BannerInsert) {
   const store = await getStoreOrThrow();
@@ -287,7 +285,10 @@ export async function deleteCategorySection(id: string) {
   revalidatePath('/category/[slug]', 'page');
   return { success: true };
 }
-type ContentBlockUpdate = Database['public']['Tables']['content_blocks']['Update'];
+
+// ==========================================
+// 8. CONTENT BLOCK ACTIONS (Home Grid)
+// ==========================================
 
 export async function updateContentBlock(id: string, updates: ContentBlockUpdate) {
   const store = await getStoreOrThrow();
@@ -303,4 +304,124 @@ export async function updateContentBlock(id: string, updates: ContentBlockUpdate
 
   revalidatePath('/'); // ⚡ Refresh the homepage immediately
   return { success: true };
+}
+
+// ✅ NEW: Create a new block (for adding carousel items)
+export async function createContentBlock(data: { 
+  section_key: string; 
+  block_key: string; 
+  title: string; 
+  description?: string; 
+  icon_key?: string; 
+  meta_info?: any 
+}) {
+  const store = await getStoreOrThrow(); // 🔒 Get current store
+  const supabase = await createClient();
+  
+  const { data: newBlock, error } = await supabase
+    .from('content_blocks')
+    .insert([{
+      store_id: store.id, // 🔒 IMPORTANT: Link to store
+      section_key: data.section_key,
+      block_key: data.block_key, 
+      title: data.title,
+      description: data.description,
+      icon_key: data.icon_key,
+      meta_info: data.meta_info
+    }])
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  
+  revalidatePath('/admin/grid'); 
+  revalidatePath('/'); 
+  return newBlock;
+}
+
+// ✅ NEW: Delete a block
+export async function deleteContentBlock(id: string) {
+  const store = await getStoreOrThrow();
+  const supabase = await createClient();
+  
+  const { error } = await supabase
+    .from('content_blocks')
+    .delete()
+    .eq('id', id)
+    .eq('store_id', store.id); // 🔒 Security Check
+
+  if (error) throw new Error(error.message);
+  
+  revalidatePath('/admin/grid');
+  revalidatePath('/');
+}
+
+// ==========================================
+// 9. DASHBOARD STATS
+// ==========================================
+
+export interface DashboardStats {
+  totalRevenue: number;
+  totalOrders: number;
+  avgOrderValue: number;
+  lowStockCount: number;
+  recentOrders: any[];
+}
+
+export async function getDashboardStats(): Promise<DashboardStats> {
+  const supabase = await createClient();
+  
+  // 1. Security: Get the Store ID for the current user
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+
+  const { data: store } = await supabase
+    .from('stores')
+    .select('id')
+    .eq('owner_id', user.id)
+    .single();
+
+  if (!store) throw new Error("Store not found");
+
+  // 2. Parallel Fetching for Speed ⚡
+  const [revenueRes, ordersRes, inventoryRes, recentRes] = await Promise.all([
+    // A. Total Revenue
+    supabase
+      .from('orders')
+      .select('total_amount.sum()')
+      .eq('store_id', store.id)
+      .neq('status', 'cancelled'),
+
+    // B. Total Orders
+    supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('store_id', store.id),
+
+    // C. Low Stock
+    supabase
+      .from('product_variants')
+      .select('*', { count: 'exact', head: true })
+      .lt('stock', 5),
+
+    // D. Recent Orders
+    supabase
+      .from('orders')
+      .select('id, customer_name, total_amount, status, created_at')
+      .eq('store_id', store.id)
+      .order('created_at', { ascending: false })
+      .limit(5)
+  ]);
+
+  const totalRevenue = (revenueRes.data as any)?.[0]?.sum || 0;
+  const totalOrders = ordersRes.count || 0;
+  const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+  return {
+    totalRevenue,
+    totalOrders,
+    avgOrderValue,
+    lowStockCount: inventoryRes.count || 0,
+    recentOrders: recentRes.data || []
+  };
 }

@@ -74,28 +74,19 @@ export async function upsertProduct(
   const productId = product.id;
 
   // 5. SYNC VARIANTS
-  // Clean up old variants (Soft fail if orders exist)
-  if (productData.id) {
-    try {
-        await supabase.from('product_variants').delete().eq('product_id', productId);
-    } catch (e) {
-        console.warn("Variant cleanup skipped (likely due to existing orders).");
-    }
-  }
-  
-  // Insert new variants
-  if (variantData.length > 0) {
+ if (variantData.length > 0) {
     const variantsPayload = variantData.map((v) => ({
-        ...v,
-        product_id: productId,
+      ...v,
+      product_id: productId,
+      // If the UI passed an ID, Supabase updates that row. If no ID, it creates a new one.
+      updated_at: new Date().toISOString()
     }));
 
     const { error: varError } = await supabase
-        .from('product_variants')
-        .insert(variantsPayload);
-        
+      .from('product_variants')
+      .upsert(variantsPayload, { onConflict: 'id' });
+      
     if (varError) throw new Error(`Variant Error: ${varError.message}`);
-  }
 
   // 6. UPDATE COUNTER (If new product)
   if (!productData.id) {
@@ -107,4 +98,4 @@ export async function upsertProduct(
   // If you use tags for the storefront, bust them too:
 revalidatePath('/', 'layout');  
   return { success: true, productId };
-}
+}}

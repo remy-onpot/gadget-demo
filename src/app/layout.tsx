@@ -5,7 +5,9 @@ export const metadata: Metadata = {
   title: "NimdeShop",
   description: "The OS for African Commerce",
   icons: {
-    icon: "/favicon.ico",
+    icon: '/icon.png', // Points to public/icon.png
+    shortcut: '/icon.png',
+    apple: '/icon.png',
   },
 };
 

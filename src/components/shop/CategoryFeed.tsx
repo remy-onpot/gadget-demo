@@ -1,45 +1,79 @@
-import { CategoryRail } from '@/components/home/CategoryRail'; 
-import { getCategoryFeed } from '@/lib/services/products';
+import { createClient } from '@/lib/supabase-server';
+import { CategoryRail } from '@/components/home/CategoryRail';
+import { Database } from '@/lib/database.types';
+
+type ProductRow = Database['public']['Tables']['products']['Row'];
+type CategoryMetaRow = Database['public']['Tables']['category_metadata']['Row'];
 
 interface CategoryFeedProps {
   storeId: string;
 }
 
 export default async function CategoryFeed({ storeId }: CategoryFeedProps) {
-  // 1. Fetch with Store ID
-  const { grouped, metadata } = await getCategoryFeed(storeId);
-  
-  // 2. DYNAMIC SORT
-  const categoryNames = Object.keys(grouped).sort((a, b) => {
-    const orderA = metadata[a]?.sort_order ?? 999;
-    const orderB = metadata[b]?.sort_order ?? 999;
+  const supabase = await createClient();
 
-    if (orderA !== orderB) {
-        return orderA - orderB;
-    }
+  // 2. Fetch Products & Metadata in Parallel
+  const [productsRes, metaRes] = await Promise.all([
+    supabase
+      .from('products')
+      .select('*')
+      .eq('store_id', storeId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false }),
+    
+    supabase
+      .from('category_metadata')
+      .select('*')
+      .eq('store_id', storeId)
+  ]);
+
+  const products = (productsRes.data || []) as ProductRow[];
+  const metaData = (metaRes.data || []) as CategoryMetaRow[];
+
+  if (products.length === 0) return null;
+
+  // 3. Group Products by Category
+  const grouped: Record<string, ProductRow[]> = {};
+  products.forEach((p) => {
+    if (!p.category) return;
+    if (!grouped[p.category]) grouped[p.category] = [];
+    grouped[p.category].push(p);
+  });
+
+  // 4. Create Metadata Map for easy lookup
+  const metaMap = metaData.reduce((acc, item) => {
+    acc[item.slug] = item;
+    return acc;
+  }, {} as Record<string, CategoryMetaRow>);
+
+  // 5. Sort Categories
+  // Priority: 1. Metadata Sort Order, 2. Alphabetical
+  const categories = Object.keys(grouped).sort((a, b) => {
+    const orderA = metaMap[a]?.sort_order ?? 999;
+    const orderB = metaMap[b]?.sort_order ?? 999;
+    if (orderA !== orderB) return orderA - orderB;
     return a.localeCompare(b);
   });
 
-  if (categoryNames.length === 0) return null;
-
   return (
     <div className="space-y-4">
-      {categoryNames.map((cat) => {
-        const meta = metadata[cat];
+      {categories.map((cat) => {
+        const meta = metaMap[cat];
         
-        const cleanSettings = meta ? {
+        // Map DB metadata to the shape CategoryRail expects
+        const settings = meta ? {
             title: meta.title || undefined,
             subtitle: meta.subtitle || undefined,
-            image_url: meta.image_url || undefined,
+            image_url: meta.image_url || undefined
         } : undefined;
 
         return (
-            <CategoryRail 
-               key={cat} 
-               category={cat} 
-               products={grouped[cat]}
-               settings={cleanSettings} 
-            />
+           <CategoryRail 
+              key={cat} 
+              category={cat} 
+              products={grouped[cat]}
+              settings={settings}
+           />
         );
       })}
     </div>

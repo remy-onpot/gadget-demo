@@ -14,7 +14,7 @@ export async function updateCustomerProfile(formData: { fullName: string; phone:
     .update({
       full_name: formData.fullName,
       phone: formData.phone,
-      shipping_address: formData.address,
+      shipping_address: formData.address, // ✅ Ensure this matches DB column name
       updated_at: new Date().toISOString()
     })
     .eq('id', user.id);

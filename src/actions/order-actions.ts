@@ -1,9 +1,8 @@
 'use server';
 
-import { createClient } from '@supabase/supabase-js'; // Use direct SDK for Service Role
+import { createClient } from '@supabase/supabase-js'; 
 import { Database } from '@/lib/database.types';
 
-// Initialize "God Mode" Client to bypass RLS for public orders
 const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -14,7 +13,7 @@ interface OrderPayload {
   slug: string;
   customer: {
     name: string;
-    email: string;
+    email: string; // Ensure this is passed from the form
     phone: string;
     address: string;
     notes?: string;
@@ -26,13 +25,16 @@ interface OrderPayload {
     variant_name: string;
     quantity: number;
     unit_price: number;
+    // NEW FIELDS FOR SNAPSHOT
+    sku?: string;
+    image_url?: string;
   }[];
   total: number;
 }
 
 export async function submitOrder(payload: OrderPayload) {
   try {
-    // 1. Get Store ID & Settings from Slug
+    // 1. Get Store ID & Settings
     const { data: store, error: storeError } = await supabaseAdmin
       .from('stores')
       .select('id, settings')
@@ -45,9 +47,9 @@ export async function submitOrder(payload: OrderPayload) {
     const { data: order, error: orderError } = await supabaseAdmin
       .from('orders')
       .insert({
-        store_id: store.id, // 🔒 Link to correct store
+        store_id: store.id,
         customer_name: payload.customer.name,
-        customer_email: payload.customer.email,
+        customer_email: payload.customer.email, // Now supported by DB
         customer_phone: payload.customer.phone,
         delivery_address: payload.customer.address,
         delivery_notes: payload.customer.notes,
@@ -60,10 +62,17 @@ export async function submitOrder(payload: OrderPayload) {
 
     if (orderError) throw new Error(`Order Failed: ${orderError.message}`);
 
-    // 3. Create Order Items
+    // 3. Create Order Items (With Snapshot Data)
     const itemsData = payload.items.map(item => ({
       order_id: order.id,
-      ...item
+      product_id: item.product_id,
+      variant_id: item.variant_id,
+      product_name: item.product_name,
+      variant_name: item.variant_name,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      sku: item.sku || null,            // Snapshot SKU
+      image_url: item.image_url || null // Snapshot Image
     }));
 
     const { error: itemsError } = await supabaseAdmin
@@ -72,8 +81,6 @@ export async function submitOrder(payload: OrderPayload) {
 
     if (itemsError) throw new Error(`Items Failed: ${itemsError.message}`);
 
-    // 4. Return Data for WhatsApp
-    // We return the phone number from DB settings to ensure it's up to date
     const settings = store.settings as Record<string, any>;
     return { 
       success: true, 

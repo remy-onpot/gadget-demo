@@ -390,30 +390,36 @@ export type Database = {
       order_items: {
         Row: {
           id: string
+          image_url: string | null
           order_id: string | null
           product_id: string | null
           product_name: string
           quantity: number
+          sku: string | null
           unit_price: number
           variant_id: string | null
           variant_name: string | null
         }
         Insert: {
           id?: string
+          image_url?: string | null
           order_id?: string | null
           product_id?: string | null
           product_name: string
           quantity: number
+          sku?: string | null
           unit_price: number
           variant_id?: string | null
           variant_name?: string | null
         }
         Update: {
           id?: string
+          image_url?: string | null
           order_id?: string | null
           product_id?: string | null
           product_name?: string
           quantity?: number
+          sku?: string | null
           unit_price?: number
           variant_id?: string | null
           variant_name?: string | null
@@ -445,6 +451,7 @@ export type Database = {
       orders: {
         Row: {
           created_at: string | null
+          customer_email: string | null
           customer_name: string
           customer_phone: string
           delivery_address: string
@@ -458,6 +465,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          customer_email?: string | null
           customer_name: string
           customer_phone: string
           delivery_address: string
@@ -471,6 +479,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          customer_email?: string | null
           customer_name?: string
           customer_phone?: string
           delivery_address?: string
@@ -538,6 +547,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           images: string[] | null
+          original_price: number | null
           price: number
           product_id: string | null
           sku: string | null
@@ -550,6 +560,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           images?: string[] | null
+          original_price?: number | null
           price: number
           product_id?: string | null
           sku?: string | null
@@ -562,6 +573,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           images?: string[] | null
+          original_price?: number | null
           price?: number
           product_id?: string | null
           sku?: string | null

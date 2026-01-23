@@ -1,33 +1,44 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // 1. OPTIMIZATION: remove "X-Powered-By: Next.js" header (Security through obscurity)
+  // 1. OPTIMIZATION: remove "X-Powered-By: Next.js" header
   poweredByHeader: false,
+
+  // 2. CRITICAL FIX: TRUST YOUR SUBDOMAINS
+  experimental: {
+    serverActions: {
+      allowedOrigins: [
+        'localhost:3000', 
+        '*.nimdeshop.com',          // Your production domain
+        '*.gadget-demo.vercel.app', // Vercel preview deployments
+        'gadget-demo.vercel.app'
+      ],
+    },
+  },
   
-  // 2. IMAGE OPTIMIZATION: Allow images only from trusted domains
+  // 3. IMAGE OPTIMIZATION
   images: {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: '**.supabase.co', // Your Supabase Storage
+        hostname: '**.supabase.co', 
       },
       {
         protocol: 'https',
-        hostname: 'images.unsplash.com', // For dummy data
+        hostname: 'images.unsplash.com', 
       },
       {
         protocol: 'https',
-        hostname: 'grainy-gradients.vercel.app', // For your background textures
+        hostname: 'grainy-gradients.vercel.app',
       },
       {
         protocol: 'https',
-        hostname: 'store.storeimages.cdn-apple.com', // For Apple Product images
+        hostname: 'store.storeimages.cdn-apple.com',
       }
     ],
-    // Cache optimized images for a long time
     minimumCacheTTL: 60, 
   },
 
-  // 3. SECURITY HEADERS
+  // 4. SECURITY HEADERS
   async headers() {
     return [
       {
@@ -43,11 +54,11 @@ const nextConfig = {
           },
           {
             key: 'X-Frame-Options',
-            value: 'SAMEORIGIN' // Prevents your site from being put in an iframe (Clickjacking protection)
+            value: 'SAMEORIGIN'
           },
           {
             key: 'X-Content-Type-Options',
-            value: 'nosniff' // Prevents browser from guessing content types
+            value: 'nosniff'
           },
           {
             key: 'Referrer-Policy',
@@ -55,7 +66,7 @@ const nextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()' // Blocks access to sensitive APIs
+            value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()'
           }
         ]
       }

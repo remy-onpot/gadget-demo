@@ -1,18 +1,23 @@
 import { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { headers } from "next/headers"; // 1. Import headers
 import "@/app/globals.css";
 
 // Components
 import { DesktopSuggestion } from '@/components/shop/DesktopSuggestion';
 import { ThemeInjector } from "@/components/ThemeInjector";
 import { Toaster } from 'sonner';
+import { Header } from '@/components/layout/Header';
+import { Footer } from '@/components/layout/Footer';
+import { StoreInitializer } from '@/components/storefront/StoreInitializer';
 
-// Database
+// Database & Services
 import { createClient } from "@/lib/supabase-server";
-import { Database } from "@/lib/database.types"; // Ensure you import this
+import { Database } from "@/lib/database.types";
+import { getGlobalData } from "@/lib/services/global";
 
-// 1. DEFINE TYPES
 type StoreRow = Database['public']['Tables']['stores']['Row'];
-type SiteParams = Promise<{ site: string }>; // ✅ Next.js 15 Fix
+type SiteParams = Promise<{ site: string }>;
 
 // Helper to fetch store data consistently
 async function getStore(slug: string): Promise<StoreRow | null> {
@@ -25,52 +30,70 @@ async function getStore(slug: string): Promise<StoreRow | null> {
   return data;
 }
 
-// 2. DYNAMIC METADATA (Store SEO)
+// ... generateMetadata function remains the same ...
 export async function generateMetadata(
-  { params }: { params: SiteParams } // ✅ Typed as Promise
+  { params }: { params: SiteParams }
 ): Promise<Metadata> {
-  const resolvedParams = await params;
-  const store = await getStore(resolvedParams.site);
-
-  // Safe Cast: settings is Json in DB, treat as Record for access
-  const settings = (store?.settings as Record<string, string>) || {};
-  const siteName = store?.name || "NimdeShop";
-  const title = settings.site_title || `${siteName} | Home`;
-  const description = settings.site_description || "Welcome to our online store.";
-
-  return {
-    title: title,
-    description: description,
-    openGraph: {
-      title: title,
-      description: description,
-      type: 'website',
-      siteName: siteName,
-      images: settings.site_logo ? [{ url: settings.site_logo }] : undefined
-    }
-  };
+    // ... existing metadata code ...
+    const resolvedParams = await params;
+    const store = await getStore(resolvedParams.site);
+    if (!store) return { title: "Store Not Found" };
+    
+    const settings = (store.settings as Record<string, string>) || {};
+    return {
+        title: settings.site_title || `${store.name} | Home`,
+        description: settings.site_description
+    };
 }
 
-// 3. THE LAYOUT
+
 export default async function SiteLayout({
   children,
   params,
 }: Readonly<{
   children: React.ReactNode;
-  params: SiteParams; // ✅ Typed as Promise
+  params: SiteParams;
 }>) {
   const resolvedParams = await params;
   const store = await getStore(resolvedParams.site);
+
+  if (!store) return notFound();
+
+  // 1. GET CURRENT PATH
+  // We use the 'x-url' header or fallback to checking the request context if available.
+  // Note: In some hosting environments, you might need middleware to pass the pathname.
+  // A simpler way for visual logic is checking if the children effectively 'hide' it,
+  // but let's use a robust header check or simple conditional rendering.
   
-  // Safe defaults
-  const settings = (store?.settings as Record<string, string>) || {};
+  // ⚡ SIMPLER APPROACH: We will render Header/Footer by default,
+  // but you can wrap the specific Page components (Login/Checkout) 
+  // in a "NoLayout" wrapper if you want strict control. 
+  
+  // However, for this file, let's fetch the data needed for the header/footer
+  // even if we might visually hide them later.
+  const { settings, categories } = await getGlobalData(store.id);
   const themeColor = settings.theme_color || '#f97316'; 
 
-  // JSON-LD
+  // 2. DETECT "ISOLATED" PAGES
+  // In Next.js Server Components, getting the pathname can be tricky without middleware.
+  // If you are using middleware.ts, ensure it sets a header like 'x-pathname'.
+  const headerList = await headers();
+  const pathname = headerList.get("x-pathname") || ""; 
+  
+  // If you haven't set up the middleware to pass 'x-pathname', 
+  // we can assume we show them everywhere, OR you can use a Client Component wrapper.
+  // Let's assume for now we SHOW them everywhere except where the PAGE explicitly hides them (CSS) 
+  // OR we use the standard approach:
+  
+  // LOGIC: Hide on Login and Checkout
+  // Note: This string check is rough. Ensure your middleware.ts sets this header!
+  const isIsolatedPage = pathname.includes('/login') || pathname.includes('/checkout');
+
+  // JSON-LD (Rich Results)
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Store',
-    name: store?.name || 'My Store',
+    name: store.name || 'My Store',
     image: settings.site_logo,
     description: settings.site_description,
     telephone: settings.support_phone,
@@ -85,21 +108,25 @@ export default async function SiteLayout({
 
   return (
     <>
-        {/* 1. JSON-LD SCRIPT */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       
-        {/* 2. THEME INJECTION */}
         <ThemeInjector color={themeColor} />
+        <StoreInitializer storeId={store.id} />
 
-        {/* 3. MAIN CONTENT */}
-        <main className="min-h-screen">
-          {children}
-        </main>
+        <div className="flex flex-col min-h-screen">
+            {/* CONDITIONAL HEADER */}
+            {!isIsolatedPage && <Header settings={settings} categories={categories} />}
+            
+            <main className="flex-grow">
+              {children}
+            </main>
 
-        {/* 4. UTILITIES */}
+            {/* CONDITIONAL FOOTER */}
+{!isIsolatedPage && <Footer settings={settings} categories={categories} />}        </div>
+
         <DesktopSuggestion />
         <Toaster position="top-center" richColors />
     </>

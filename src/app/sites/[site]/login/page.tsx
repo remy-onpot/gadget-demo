@@ -10,13 +10,14 @@ export async function generateMetadata({ params }: { params: { site: string } })
 }
 
 export default async function LoginPage({ params }: { params: { site: string } }) {
+  // ✅ FIX: 'createClient()' is async. We must await it.
   const supabase = await createClient();
 
   // 1. Resolve Store Identity
   const { data: store } = await supabase
     .from('stores')
     .select('id, name, settings')
-    .eq('slug', params.site)
+    .eq('subdomain', params.site)
     .single();
 
   if (!store) return notFound();
@@ -28,14 +29,18 @@ export default async function LoginPage({ params }: { params: { site: string } }
   }
 
   // 3. Theme Setup
-  const settings = store.settings as any;
+  // We safely cast settings to a generic object to access properties
+  const settings = store.settings as Record<string, any>;
   const themeColor = settings?.theme_color || '#f97316';
   const logo = settings?.site_logo;
 
   return (
-    <>
+    <div className="min-h-screen bg-white">
+      {/* Inject theme color for this specific store */}
       <style>{`:root { --primary: ${themeColor}; }`}</style>
+      
+      {/* Render the Client Component */}
       <StoreAuthForm storeName={store.name} storeLogo={logo} />
-    </>
+    </div>
   );
 }

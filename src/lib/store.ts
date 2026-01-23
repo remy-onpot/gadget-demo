@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { Product, Banner, Variant } from '@/lib/types'; // Ensure path is correct (@/lib/types)
-import { supabase } from '@/lib/supabase'; // Ensure path is correct (@/lib/supabase)
+import { Product, Banner, Variant } from '@/lib/types'; 
+import { supabase } from '@/lib/supabase'; 
 import { Database } from '@/lib/database.types';
 
 // 1. DEFINE CART ITEM
@@ -13,14 +13,15 @@ export interface CartItem {
   selected: boolean; 
 }
 
-// 2. DEFINE HELPER TYPES FOR DB ROWS
-type SettingRow = Database['public']['Tables']['site_settings']['Row'];
+// 2. HELPER TYPES (Updated)
+// We treat the JSON settings as a simple record
+type StoreSettings = Record<string, string>;
 
 interface StoreState {
   // Data State
   products: Product[];
   banners: Banner[];
-  settings: Record<string, string>;
+  settings: StoreSettings;
 
   // Cart State
   cart: CartItem[];
@@ -31,7 +32,8 @@ interface StoreState {
   isLoading: boolean;
 
   // Actions
-  fetchStoreData: () => Promise<void>;
+  // ⚡ UPDATED: We now require storeId to fetch the correct data
+  fetchStoreData: (storeId: string) => Promise<void>;
   addToCart: (product: Product, variant: Variant) => void;
   removeFromCart: (variantId: string) => void;
   updateQuantity: (variantId: string, delta: number) => void;
@@ -40,7 +42,7 @@ interface StoreState {
   toggleItemSelection: (variantId: string) => void;
   toggleAllSelection: (isSelected: boolean) => void;
   removeSelected: () => void; 
-  clearCart: () => void;      
+  clearCart: () => void;       
 
   toggleAdmin: () => void;
   toggleCart: (isOpen?: boolean) => void;
@@ -137,39 +139,44 @@ export const useStore = create<StoreState>()(
       clearCart: () => set({ cart: [] }),
 
       // --- 🌍 DATA FETCHING ---
-      fetchStoreData: async () => {
+      fetchStoreData: async (storeId: string) => {
+        if (!storeId) {
+            console.error("fetchStoreData called without storeId");
+            return;
+        }
+
         set({ isLoading: true });
 
         try {
           // Parallel Fetching for speed
-          const [productsRes, bannersRes, settingsRes] = await Promise.all([
+          const [productsRes, bannersRes, storeRes] = await Promise.all([
+            // 1. Fetch Products (Filtered by Store)
             supabase
               .from('products')
-              .select('*, images:base_images, price:base_price') // MAP COLUMNS
+              .select('*, images:base_images, price:base_price') 
+              .eq('store_id', storeId) // ✅ Secure: Filter by Store
               .eq('is_active', true)
               .order('created_at', { ascending: false }),
             
+            // 2. Fetch Banners (Filtered by Store)
             supabase
               .from('banners')
               .select('*')
+              .eq('store_id', storeId) // ✅ Secure: Filter by Store
               .eq('is_active', true),
             
+            // 3. Fetch Settings (From Stores table)
             supabase
-              .from('site_settings')
-              .select('*')
+              .from('stores')
+              .select('settings')
+              .eq('id', storeId)
+              .single()
           ]);
 
-          // ✅ SAFE: Strictly Typed Settings Reducer
-          // We explicitly tell TS that 'settingsRes.data' is 'SettingRow[]'
-          const rawSettings = (settingsRes.data as SettingRow[]) || [];
-          
-          const settingsMap = rawSettings.reduce((acc, curr) => {
-            // Guard against null keys or values
-            if (curr.key && curr.value) {
-                acc[curr.key] = curr.value;
-            }
-            return acc;
-          }, {} as Record<string, string>);
+          // Extract settings safely
+          const rawSettings = storeRes.data?.settings || {};
+          // Ensure it matches our expected string record type
+          const settingsMap = rawSettings as Record<string, string>;
 
           set({
             // ✅ SAFE: Double casting to bridge DB JSON -> App Interface

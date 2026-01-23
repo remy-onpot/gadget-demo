@@ -8,17 +8,23 @@ import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/utils';
 import { Database } from '@/lib/database.types';
 
-// 1. DEFINE ROW TYPE
-type SettingRow = Database['public']['Tables']['site_settings']['Row'];
+// 1. HELPER TYPE FOR JSON
+type Json = Database['public']['CompositeTypes'] extends { [key: string]: unknown } 
+  ? Database['public']['CompositeTypes'] 
+  : Record<string, any>;
 
-export const SettingsManager = () => {
+interface SettingsManagerProps {
+  storeId: string; // We need this now!
+}
+
+export const SettingsManager = ({ storeId }: SettingsManagerProps) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
   // Local state for form fields
   const [formData, setFormData] = useState<Record<string, string>>({});
 
-  // The specific keys we want to manage
+  // The specific keys this form manages
   const KNOWN_KEYS = [
     'whatsapp_phone', 'support_phone', 'support_email', 
     'address_display', 'map_link', 'opening_hours',
@@ -26,21 +32,33 @@ export const SettingsManager = () => {
   ];
 
   useEffect(() => {
-    fetchSettings();
-  }, []);
+    if (storeId) fetchSettings();
+  }, [storeId]);
 
   const fetchSettings = async () => {
-    const { data } = await supabase.from('site_settings').select('*');
+    // 2. FETCH FROM STORES TABLE (JSON COLUMN)
+    const { data, error } = await supabase
+      .from('stores')
+      .select('settings')
+      .eq('id', storeId)
+      .single();
     
-    if (data) {
-      // ✅ TYPE SAFE: We know 'data' is SettingRow[]
-      const rows = data as SettingRow[];
+    if (data?.settings) {
+      // Safely cast the JSON to a record we can use
+      const currentSettings = data.settings as Record<string, any>;
       
-      const initialData: Record<string, string> = {};
-      rows.forEach(item => {
-        if (item.value) initialData[item.key] = item.value;
+      // Filter out only strings for our form, or keep everything. 
+      // It's safer to just load everything into state so we don't lose data on save.
+      const formState: Record<string, string> = {};
+      
+      Object.keys(currentSettings).forEach(key => {
+         const value = currentSettings[key];
+         if (typeof value === 'string') {
+             formState[key] = value;
+         }
       });
-      setFormData(initialData);
+      
+      setFormData(formState);
     }
     setLoading(false);
   };
@@ -48,22 +66,43 @@ export const SettingsManager = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Prepare upsert payload
-      const updates = Object.entries(formData)
-        .filter(([key]) => KNOWN_KEYS.includes(key)) // Only save known keys
-        .map(([key, value]) => ({
-          key,
-          value,
-          updated_at: new Date().toISOString()
-        }));
+      if (!storeId) throw new Error("No Store ID provided");
 
-      // ✅ TYPE SAFE: Supabase knows this matches the schema
-      const { error } = await supabase.from('site_settings').upsert(updates);
+      // 3. SAFE MERGE STRATEGY
+      // First, get the latest settings from DB to ensure we don't overwrite 
+      // something that changed in the background (like theme_color).
+      const { data: latestData } = await supabase
+        .from('stores')
+        .select('settings')
+        .eq('id', storeId)
+        .single();
+
+      const existingSettings = (latestData?.settings as Record<string, any>) || {};
+
+      // Merge: Existing DB Settings + New Form Data
+      // We only strictly update the keys we know about to be safe, 
+      // OR we update everything in formData. 
+      // Here we update everything in formData that matches our allowed keys list, 
+      // effectively patching the JSON.
+      const updates: Record<string, any> = { ...existingSettings };
+      
+      KNOWN_KEYS.forEach(key => {
+        // Only update if it's in our formData (allows clearing values too)
+        if (formData[key] !== undefined) {
+           updates[key] = formData[key];
+        }
+      });
+
+      // 4. UPDATE THE STORE ROW
+      const { error } = await supabase
+        .from('stores')
+        .update({ settings: updates })
+        .eq('id', storeId);
       
       if (error) throw error;
       toast.success("Site settings updated successfully!");
       
-    } catch (e: unknown) { // ✅ SAFE ERROR HANDLING
+    } catch (e: unknown) {
       toast.error("Error: " + getErrorMessage(e));
     } finally {
       setSaving(false);
@@ -77,10 +116,7 @@ export const SettingsManager = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#FAFAFA] font-sans pb-20">
-        {/* Mock Header Skeleton */}
         <div className="bg-white border-b border-gray-200 h-16 sticky top-0 z-30" />
-        
-        {/* Mock Content Grid */}
         <div className="container mx-auto px-4 py-8 animate-pulse">
           <div className="h-8 w-48 bg-gray-200 rounded-lg mb-8" />
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
