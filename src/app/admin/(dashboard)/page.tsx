@@ -10,14 +10,7 @@ import {
   Clock 
 } from 'lucide-react';
 import Link from 'next/link';
-
-// Helper for currency formatting
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-GH', {
-    style: 'currency',
-    currency: 'GHS'
-  }).format(amount);
-};
+import { formatCurrency } from '@/lib/utils';
 
 export default async function AdminOverviewPage() {
   // Fetch data on the server

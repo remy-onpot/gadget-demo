@@ -27,7 +27,7 @@ export default function AdminOrdersPage() {
   
   const [isPending, startTransition] = useTransition();
 
-  // 1. FETCH DATA
+ // 1. FETCH DATA
   useEffect(() => {
     const fetchData = async () => {
       // A. Fetch Orders
@@ -36,43 +36,35 @@ export default function AdminOrdersPage() {
         .select('*, items:order_items(*)')
         .order('created_at', { ascending: false });
 
-     if (ordersError) {
-         toast.error("Failed to load orders");
-         console.error(ordersError);
-     }
+      if (ordersError) {
+        toast.error("Failed to load orders");
+        console.error(ordersError);
+      }
 
-     // B. Fetch Settings (FROM NEW 'stores' TABLE)
-     // We fetch the first store found. In a multi-tenant app, you'd filter by owner_id or slug.
-     const { data: storeData, error: storeError } = await supabase
+      // B. Fetch Settings
+      const { data: storeData } = await supabase
         .from('stores')
         .select('settings')
         .limit(1)
         .single();
-    
-    // Process Settings (JSONB -> Record)
-    // The new schema stores settings as a JSON object, so no need to reduce rows.
-    let settingsMap: Record<string, string> = {};
-    if (storeData?.settings) {
-        // Safe cast from JSONB to Record<string, string>
+
+      let settingsMap: Record<string, string> = {};
+      if (storeData?.settings) {
         settingsMap = storeData.settings as unknown as Record<string, string>;
-    } else if (storeError) {
-        console.error("Failed to load store settings:", storeError);
-    }
+      }
 
-    if (ordersData) {
-       // Safe cast for joined data
-       const typedOrders = ordersData as unknown as OrderWithItems[];
-       setOrders(typedOrders);
+      if (ordersData) {
+        const typedOrders = ordersData as unknown as OrderWithItems[];
+        setOrders(typedOrders);
 
-       // Auto-expand the most recent date
-       if (typedOrders.length > 0) {
+        if (typedOrders.length > 0) {
           const firstOrder = typedOrders[0];
           if (firstOrder.created_at) {
-             const firstDate = new Date(firstOrder.created_at).toDateString();
-             setExpandedDates([firstDate]);
+            const firstDate = new Date(firstOrder.created_at).toDateString();
+            setExpandedDates([firstDate]);
           }
-       }
-    }
+        }
+      }
 
       setSettings(settingsMap);
       setLoading(false);
@@ -80,13 +72,33 @@ export default function AdminOrdersPage() {
 
     fetchData();
 
-    // Realtime Listener
-    const channel = supabase.channel('realtime-orders')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchData())
-      .subscribe();
+    // 2. Realtime Listener (Optimized)
+    // 👇 THIS LINE was likely missing or placed inside the 'if' block by mistake
+    const channel = supabase.channel('realtime-orders'); 
 
+    if (orders.length > 0) {
+       // We assume the first order belongs to the current store
+       // (In a real admin, you might get store_id from the user session instead)
+       const currentStoreId = orders[0].store_id; 
+       
+       channel
+         .on(
+           'postgres_changes',
+           { 
+             event: '*', 
+             schema: 'public', 
+             table: 'orders',
+             filter: `store_id=eq.${currentStoreId}` // ✅ Filter by Store ID
+           }, 
+           () => fetchData()
+         )
+         .subscribe();
+    }
+
+    // Cleanup function
     return () => { supabase.removeChannel(channel); };
-  }, []);
+    
+  }, [orders]);
 
   // 2. SEARCH & FILTER LOGIC
   const filteredOrders = useMemo(() => {
