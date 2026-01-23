@@ -11,8 +11,9 @@ import {
   ShoppingBag, 
   Ghost,
   LayoutGrid,
-  Menu, // New Icon
-  X     // New Icon
+  Menu, 
+  X,
+  User // Added User icon
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -23,7 +24,7 @@ interface NavItemProps {
   icon: React.ReactNode;
   label: string;
   active: boolean;
-  onClick?: () => void; // Added to close menu on click
+  onClick?: () => void; 
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -81,6 +82,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <NavItem onClick={() => setIsMobileOpen(false)} href="/admin/grid" active={pathname === '/admin/grid'} icon={<LayoutGrid size={20} />} label="Home Grid" />
           <NavItem onClick={() => setIsMobileOpen(false)} href="/admin/layouts" active={pathname === '/admin/layouts'} icon={<Layers size={20} />} label="Category Layouts" />
           <NavItem onClick={() => setIsMobileOpen(false)} href="/admin/settings" active={pathname === '/admin/settings'} icon={<Settings size={20} />} label="Site Settings" />
+
+          {/* NEW SECTION: SYSTEM */}
+          <p className="text-xs font-bold text-slate-500 uppercase px-4 mt-6 mb-1">System</p>
+          <NavItem 
+            onClick={() => setIsMobileOpen(false)} 
+            href="/admin/account" 
+            active={pathname === '/admin/account'} 
+            icon={<User size={20} />} 
+            label="My Account" 
+          />
         </nav>
 
         <div className="p-4 border-t border-slate-700">
@@ -95,7 +106,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {children}
       </main>
       
-      {/* Keeping this as requested, but now users CAN actually use the menu if they really want to */}
       <MobileExperiencePrompt />
     </div>
   );

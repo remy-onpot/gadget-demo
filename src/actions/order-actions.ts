@@ -9,27 +9,23 @@ const supabaseAdmin = createClient<Database>(
   { auth: { persistSession: false } }
 );
 
+// We strictly define what we accept from the client.
+// Notice we REMOVED 'unit_price' and 'total' - we will calculate these.
 interface OrderPayload {
   slug: string;
   customer: {
     name: string;
-    email: string; // Ensure this is passed from the form
+    email: string;
     phone: string;
     address: string;
     notes?: string;
   };
   items: {
-    product_id: string;
-    variant_id: string;
-    product_name: string;
-    variant_name: string;
+    product_id: string; // Used for double-verification
+    variant_id: string; // The source of truth for price
+    variant_name?: string; // We can accept the label (e.g. "Red / L") for display
     quantity: number;
-    unit_price: number;
-    // NEW FIELDS FOR SNAPSHOT
-    sku?: string;
-    image_url?: string;
   }[];
-  total: number;
 }
 
 export async function submitOrder(payload: OrderPayload) {
@@ -43,17 +39,73 @@ export async function submitOrder(payload: OrderPayload) {
 
     if (storeError || !store) throw new Error('Store not found');
 
-    // 2. Create Order
+    // 2. SECURITY FIX: Fetch Real Prices from DB
+    // We do not trust the prices sent by the frontend.
+    const variantIds = payload.items.map(item => item.variant_id);
+    
+    const { data: dbVariants, error: variantsError } = await supabaseAdmin
+      .from('product_variants')
+      .select(`
+        id,
+        price,
+        sku,
+        images,
+        product_id,
+        products (
+          name,
+          store_id
+        )
+      `)
+      .in('id', variantIds);
+
+    if (variantsError || !dbVariants) throw new Error('Failed to fetch product prices');
+
+    // 3. Calculate Total & Verify Items
+    let calculatedTotal = 0;
+    const finalOrderItems = [];
+
+    for (const clientItem of payload.items) {
+      const dbItem = dbVariants.find(v => v.id === clientItem.variant_id);
+
+      if (!dbItem) throw new Error(`Product variant not found: ${clientItem.variant_id}`);
+
+      // Verify Store Ownership (Prevent users from ordering items from other stores)
+      // @ts-ignore - Supabase types for joined relations can be tricky, verifying safely:
+      const productData = dbItem.products as unknown as { name: string; store_id: string };
+      
+      if (productData.store_id !== store.id) {
+        throw new Error(`Security Alert: Product "${productData.name}" does not belong to this store.`);
+      }
+
+      // Calculate Line Item
+      const unitPrice = dbItem.price;
+      const lineTotal = unitPrice * clientItem.quantity;
+      calculatedTotal += lineTotal;
+
+      // Build the secure item object
+      finalOrderItems.push({
+        product_id: dbItem.product_id,
+        variant_id: dbItem.id,
+        product_name: productData.name, 
+        variant_name: clientItem.variant_name || '', // Use client label or empty
+        quantity: clientItem.quantity,
+        unit_price: unitPrice, // ✅ FROM DB
+        sku: dbItem.sku || null,
+        image_url: dbItem.images?.[0] || null
+      });
+    }
+
+    // 4. Create Order (With Server-Calculated Total)
     const { data: order, error: orderError } = await supabaseAdmin
       .from('orders')
       .insert({
         store_id: store.id,
         customer_name: payload.customer.name,
-        customer_email: payload.customer.email, // Now supported by DB
+        customer_email: payload.customer.email,
         customer_phone: payload.customer.phone,
         delivery_address: payload.customer.address,
         delivery_notes: payload.customer.notes,
-        total_amount: payload.total,
+        total_amount: calculatedTotal, // ✅ SECURE TOTAL
         status: 'pending',
         payment_method: 'pay_on_delivery'
       })
@@ -62,17 +114,10 @@ export async function submitOrder(payload: OrderPayload) {
 
     if (orderError) throw new Error(`Order Failed: ${orderError.message}`);
 
-    // 3. Create Order Items (With Snapshot Data)
-    const itemsData = payload.items.map(item => ({
+    // 5. Insert Order Items
+    const itemsData = finalOrderItems.map(item => ({
       order_id: order.id,
-      product_id: item.product_id,
-      variant_id: item.variant_id,
-      product_name: item.product_name,
-      variant_name: item.variant_name,
-      quantity: item.quantity,
-      unit_price: item.unit_price,
-      sku: item.sku || null,            // Snapshot SKU
-      image_url: item.image_url || null // Snapshot Image
+      ...item
     }));
 
     const { error: itemsError } = await supabaseAdmin

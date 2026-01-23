@@ -19,11 +19,11 @@ type BannerRow = Database['public']['Tables']['banners']['Row'];
 type ProductRow = Database['public']['Tables']['products']['Row'];
 type BlockRow = Database['public']['Tables']['content_blocks']['Row'];
 
-// Helper Interface for the Join Query
+// Helper Interface
 interface StoreData extends StoreRow {
   banners: BannerRow[];
-  products: ProductRow[];
   content_blocks: BlockRow[];
+  // Note: We removed 'products' from here because we fetch them separately now
 }
 
 export const dynamic = 'force-dynamic';
@@ -39,14 +39,13 @@ export async function generateMetadata({ params }: { params: { site: string } })
 export default async function StoreHomePage({ params }: { params: { site: string } }) {
   const supabase = await createClient();
 
-  // 1. FETCH EVERYTHING IN ONE QUERY (Relational Join)
-  // We fetch the store and ask for its banners, products, and blocks immediately.
+  // 1. FETCH STORE CORE DATA (Fast)
+  // We removed 'products(*)' from this query to prevent the "Product Dump" crash.
   const { data: storeRaw } = await supabase
     .from('stores')
     .select(`
       *,
       banners(*),
-      products(*),
       content_blocks(*)
     `)
     .eq('slug', params.site)
@@ -54,28 +53,48 @@ export default async function StoreHomePage({ params }: { params: { site: string
 
   if (!storeRaw) return notFound();
 
-  // 2. CAST DATA
-  // We cast this to our helper interface so TypeScript knows 'store.banners' is an array of BannerRow
   const store = storeRaw as unknown as StoreData;
   const settings = (store.settings as Record<string, string>) || {};
+
+  // 2. PARALLEL PRODUCT FETCHING (Scalable)
+  // We fetch only what we need for the homepage, limiting the rows.
+  const [featuredRes, latestRes] = await Promise.all([
+    // A. Get top 8 featured items
+    supabase
+      .from('products')
+      .select('*')
+      .eq('store_id', store.id)
+      .eq('is_active', true)
+      .eq('is_featured', true)
+      .order('created_at', { ascending: false })
+      .limit(8),
+
+    // B. Get 12 latest items (to discover categories/populate rails)
+    supabase
+      .from('products')
+      .select('*')
+      .eq('store_id', store.id)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(12)
+  ]);
+
+  const featuredProducts = (featuredRes.data as ProductRow[]) || [];
+  const latestProducts = (latestRes.data as ProductRow[]) || [];
 
   // 3. ORGANIZE DATA
   
   // Banners
-  const activeBanners = store.banners.filter(b => b.is_active);
+  const activeBanners = store.banners?.filter(b => b.is_active) || [];
   const brandBanners = activeBanners.filter(b => b.slot === 'brand_hero');
   const heroGridBanners = activeBanners.filter(b => ['main_hero', 'side_top', 'side_bottom'].includes(b.slot));
-  const branchBanners = activeBanners.filter(b => b.slot === 'branch_slider'); // or pass all to BranchSlider, it has internal logic now
+  const branchBanners = activeBanners.filter(b => b.slot === 'branch_slider');
 
-  // Products
-  // In the future, you can filter by store.products.filter(p => p.is_featured) here
-  const featuredProducts = store.products
-    .filter(p => p.is_active && p.is_featured)
-    .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
-    .slice(0, 8);
-
-  // Categories (Extract Unique Categories from Products)
-  const categories = Array.from(new Set(store.products.map(p => p.category).filter(Boolean))) as string[];
+  // Categories
+  // We derive categories from the products we actually fetched. 
+  // (In the future, you should switch to fetching from the 'category_metadata' table directly)
+  const allFetchedProducts = [...featuredProducts, ...latestProducts];
+  const categories = Array.from(new Set(allFetchedProducts.map(p => p.category).filter(Boolean))) as string[];
 
   return (
     <div className="bg-[#F8FAFC] min-h-screen font-sans">
@@ -97,12 +116,13 @@ export default async function StoreHomePage({ params }: { params: { site: string
          {/* C. Featured Products */}
          <FeaturedRow products={featuredProducts} />
 
-         {/* D. Category Rails (Replaces CategoryFeed for now) */}
+         {/* D. Category Rails */}
+         {/* We filter the 'latestProducts' to populate these rails */}
          {categories.slice(0, 3).map(cat => (
             <CategoryRail 
                key={cat} 
                category={cat} 
-               products={store.products.filter(p => p.category === cat)} 
+               products={latestProducts.filter(p => p.category === cat)} 
             />
          ))}
 

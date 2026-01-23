@@ -56,25 +56,28 @@ export default function CheckoutPage({ storeSlug }: CheckoutProps) {
     setLoading(true);
 
     try {
+      // 1. Prepare Payload (Minimal Data)
+      // We strictly send ONLY what is needed to identify the item.
+      // Prices and names are now fetched securely on the server.
       const itemsPayload = checkoutItems.map(item => ({
         product_id: item.product.id,
         variant_id: item.variant.id,
-        product_name: item.product.name,
+        // We pass the variant label so the merchant sees "Red / Large" in the order
         variant_name: `${Object.values(item.variant.specs).slice(0, 2).join('/')} - ${item.variant.condition}`, 
         quantity: item.quantity,
-        unit_price: item.variant.price
       }));
 
+      // 2. Submit Order (No 'total' or 'unit_price' here anymore)
       const result = await submitOrder({
         slug: storeSlug,
         customer: formData,
         items: itemsPayload,
-        total
       });
 
       if (!result.success) throw new Error(result.error);
 
-      // WhatsApp Message Construction
+      // 3. WhatsApp Message Construction (For Client Display Only)
+      // Note: The database order is already secure. This message is just for convenience.
       const orderId = result.orderId!.slice(0, 6).toUpperCase();
       const lineItems = checkoutItems.map(item => {
         const specSummary = Object.values(item.variant.specs).slice(0, 2).join('/');
@@ -120,7 +123,7 @@ export default function CheckoutPage({ storeSlug }: CheckoutProps) {
           
           <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100">
               <h2 className="text-2xl font-black text-slate-900 mb-6 flex items-center gap-3">
-                {/* ✅ THEME FIX: Dynamic Icon Background */}
+                {/* Theme Icon */}
                 <div className="w-10 h-10 rounded-full flex items-center justify-center bg-[var(--primary)]/10 text-[var(--primary)]">
                   <User size={20} />
                 </div>
@@ -188,7 +191,6 @@ export default function CheckoutPage({ storeSlug }: CheckoutProps) {
               </form>
           </div>
 
-          {/* ✅ THEME FIX: Dynamic Info Box (Using opacity for tint) */}
           <div className="p-6 rounded-3xl border flex items-start gap-4 bg-[var(--primary)]/5 border-[var(--primary)]/10">
               <ShieldCheck className="shrink-0 mt-1 text-[var(--primary)]" size={24} />
               <div>
@@ -255,7 +257,6 @@ export default function CheckoutPage({ storeSlug }: CheckoutProps) {
                  </div>
               </div>
 
-              {/* Keep WhatsApp Green - It's a platform standard */}
               <button 
                 onClick={handlePlaceOrder}
                 disabled={loading || !formData.name || !formData.phone || !formData.address || !formData.email}
@@ -277,14 +278,13 @@ export default function CheckoutPage({ storeSlug }: CheckoutProps) {
 
       </div>
       
-      {/* Global Style for Inputs to handle focus color dynamically */}
       <style jsx>{`
         .checkout-input {
             @apply w-full p-4 bg-slate-50 border border-gray-200 rounded-xl font-bold text-slate-900 outline-none transition;
         }
         .checkout-input:focus {
             @apply bg-white border-[var(--primary)] ring-4;
-            --tw-ring-color: rgba(var(--primary-rgb), 0.1); /* Assumption: You might need to set a --primary-rgb or just accept default ring behavior */
+            --tw-ring-color: rgba(var(--primary-rgb), 0.1); 
             box-shadow: 0 0 0 4px var(--primary-ring, rgba(0,0,0,0.05));
             border-color: var(--primary);
         }
