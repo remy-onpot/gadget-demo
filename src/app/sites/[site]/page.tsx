@@ -5,7 +5,6 @@ import { Database } from '@/lib/database.types';
 
 // Components
 import { Header } from '@/components/layout/Header';
-import { Footer } from '@/components/layout/Footer';
 import { BrandHero } from '@/components/home/BrandHero';
 import { HeroGrid } from '@/components/home/HeroGrid';
 import { FeaturedRow } from '@/components/home/FeaturedRow';
@@ -94,7 +93,6 @@ export default async function StoreHomePage({ params }: { params: Promise<{ site
          <RequestCTA settings={settings} />
        </main>
 
-       <Footer settings={settings} categories={categories} />
     </div>
   );
 }

@@ -80,10 +80,10 @@ export const Footer = ({ settings, categories }: FooterProps) => {
            <div>
               <h4 className="font-bold text-white mb-6 uppercase text-xs tracking-widest">Support</h4>
               <ul className="space-y-3 text-sm font-medium">
-                 <li><Link href="/track-order" className="hover:text-white transition-colors block py-1">Track My Order</Link></li>
-                 <li><Link href="/warranty" className="hover:text-white transition-colors block py-1">Warranty Policy</Link></li>
-                 <li><Link href="/shipping" className="hover:text-white transition-colors block py-1">Shipping Info</Link></li>
-                 <li><Link href="/faqs" className="hover:text-white transition-colors block py-1">FAQs</Link></li>
+                {/* <li><Link href="/track-order" className="hover:text-white transition-colors block py-1">Track My Order</Link></li> */}
+{/* <li><Link href="/warranty" className="hover:text-white transition-colors block py-1">Warranty Policy</Link></li> */}
+                {/* <li><Link href="/shipping" className="hover:text-white transition-colors block py-1">Shipping Info</Link></li> */}
+                {/* <li><Link href="/faqs" className="hover:text-white transition-colors block py-1">FAQs</Link></li> */}
                  {whatsapp && (
                     <li><a href={`https://wa.me/${whatsapp}`} className="hover:text-white transition-colors block py-1">Chat on WhatsApp</a></li>
                  )}

@@ -72,7 +72,7 @@ export default function LandingPageClient() {
            <div className="absolute bottom-0 right-[-5%] w-[45%] h-[75%]">
               <Image src="/hero-man.png" alt="Man" fill className="object-contain object-bottom drop-shadow-[0_0_50px_rgba(59,130,246,0.3)]" priority />
            </div>
-           <div className="absolute bottom-0 left-[-5%] w-[45%] h-[95%]">
+           <div className="absolute bottom-0 left-[-5%] w-[45%] h-[85%]">
               <Image src="/hero-woman.png" alt="Woman" fill className="object-contain object-bottom drop-shadow-[0_0_50px_rgba(37,211,102,0.2)]" priority />
            </div>
         </motion.div>
@@ -99,7 +99,7 @@ export default function LandingPageClient() {
             </motion.p>
             <motion.div variants={fadeUp} className="flex flex-col sm:flex-row items-center justify-center gap-5 pt-8">
               <GetStartedButton text="Own a Store For ₵175/mo" className="w-full sm:w-auto min-w-[240px] h-16 text-lg bg-blue-600 hover:bg-blue-500 border-t border-white/20" />
-              <Link href="https://demo.nimdeshop.com" target="_blank" className="w-full sm:w-auto min-w-[200px] h-16 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md flex items-center justify-center gap-2 font-bold text-slate-200 hover:bg-white/10 transition-all shadow-lg group">
+              <Link href="https://nimde.nimdeshop.com" target="_blank" className="w-full sm:w-auto min-w-[200px] h-16 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md flex items-center justify-center gap-2 font-bold text-slate-200 hover:bg-white/10 transition-all shadow-lg group">
                 View Demo Store <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
               </Link>
             </motion.div>
