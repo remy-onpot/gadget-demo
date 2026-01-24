@@ -4,8 +4,9 @@ import React, { useState, useEffect, useTransition, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAdminData } from '@/hooks/useAdminData'; 
 import { createAttribute, updateAttribute, deleteAttribute } from '@/app/admin/(dashboard)/actions';
+import { getCategories, createCategory } from '@/actions/category-actions'; // ✅ Import Central Category Actions
 import { Database } from '@/lib/database.types'; 
-import { Plus, Trash2, Save, X, Loader2, Tags, Edit2, List, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Save, X, Loader2, Tags, Edit2, List, HelpCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 type AttributeOption = Database['public']['Tables']['attribute_options']['Row'];
@@ -13,11 +14,14 @@ type AttributeOption = Database['public']['Tables']['attribute_options']['Row'];
 export default function AttributesPage() {
   const { storeId, loading: authLoading } = useAdminData();
   const [attributes, setAttributes] = useState<AttributeOption[]>([]);
+  const [categoryList, setCategoryList] = useState<string[]>([]); // ✅ Central List
   const [loading, setLoading] = useState(true);
   
   // Editor State
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // Form Data (Internal keys stay the same for DB, but UI changes)
   const [formData, setFormData] = useState({
     category: '',
     key: '',
@@ -27,63 +31,73 @@ export default function AttributesPage() {
 
   const [isPending, startTransition] = useTransition();
   
-  // 1. ROBUST FETCHING
-  const fetchAttributes = async () => {
+  // 1. FETCH DATA
+  const fetchData = async () => {
     if (!storeId) return;
     setLoading(true);
     
-    const { data, error } = await supabase
+    // A. Fetch Attributes
+    const { data: attrData } = await supabase
       .from('attribute_options')
       .select('*')
       .eq('store_id', storeId)
       .order('category', { ascending: true })
       .order('sort_order', { ascending: true });
         
-    if (error) {
-       toast.error("Failed to load attributes");
-    } else if (data) {
-       setAttributes(data);
-    }
+    if (attrData) setAttributes(attrData);
+
+    // B. Fetch Central Categories (For Dropdown)
+    const cats = await getCategories(storeId);
+    if (cats) setCategoryList(cats.map(c => c.name));
+
     setLoading(false);
   };
 
   useEffect(() => {
-    if (storeId) fetchAttributes();
+    if (storeId) fetchData();
   }, [storeId]);
   
   // 2. SUGGESTIONS (Memoized)
   const suggestions = useMemo(() => {
-    const cats = Array.from(new Set(attributes.map(a => a.category))).sort();
+    // We prioritize the Central Category List, but fallback to existing attributes if needed
+    const cats = Array.from(new Set([...categoryList, ...attributes.map(a => a.category)])).sort();
     const keys = Array.from(new Set(attributes.map(a => a.key))).sort();
     return { cats, keys };
-  }, [attributes]);
+  }, [attributes, categoryList]);
 
   const handleSave = () => {
-    if (!formData.category) return toast.error("Category is required");
-    if (!formData.key) return toast.error("Key is required");
-    if (!formData.value) return toast.error("Value is required");
+    if (!formData.category) return toast.error("Product Category is required");
+    if (!formData.key) return toast.error("Attribute Name is required");
+    if (!formData.value) return toast.error("Option Value is required");
     
-    const promise = editingId 
-       ? updateAttribute(editingId, formData) 
-       : createAttribute(formData);
+    startTransition(async () => {
+        try {
+            // ✅ AUTO-CREATE CATEGORY if it's new
+            if (storeId && !categoryList.includes(formData.category)) {
+                await createCategory(formData.category, storeId);
+            }
 
-    toast.promise(promise, {
-       loading: 'Saving attribute...',
-       success: () => {
-          setIsEditing(false); // ✅ Close Modal
-          setEditingId(null);
-          // Reset form but keep category for rapid entry
-          setFormData(prev => ({ ...prev, value: '', sort_order: prev.sort_order + 10 })); 
-          fetchAttributes(); // Refresh List
-          return editingId ? "Attribute updated" : "Attribute created";
-       },
-       error: (err) => `Failed: ${err.message}`
+            const promise = editingId 
+               ? updateAttribute(editingId, formData) 
+               : createAttribute(formData);
+
+            await promise;
+            
+            toast.success(editingId ? "Option updated" : "Option created");
+            setIsEditing(false);
+            setEditingId(null);
+            // Smart Reset: Keep Category and Key, just clear Value for rapid entry
+            setFormData(prev => ({ ...prev, value: '', sort_order: prev.sort_order + 10 })); 
+            fetchData(); // Refresh everything
+
+        } catch (e: any) {
+            toast.error(`Failed: ${e.message}`);
+        }
     });
   };
   
   const handleDelete = (id: string) => {
-    if (!confirm('Are you sure you want to delete this option?')) return;
-    
+    if (!confirm('Delete this option?')) return;
     toast.promise(deleteAttribute(id), {
        loading: 'Deleting...',
        success: () => {
@@ -105,11 +119,13 @@ export default function AttributesPage() {
       });
     } else {
       setEditingId(null);
-      // Smart default: use most recent category if available
+      // Smart default: use most recent category
       const lastCat = attributes.length > 0 ? attributes[attributes.length - 1].category : '';
+      const lastKey = attributes.length > 0 ? attributes[attributes.length - 1].key : '';
+      
       setFormData({ 
          category: lastCat, 
-         key: '', 
+         key: lastKey, 
          value: '', 
          sort_order: 0 
       });
@@ -136,7 +152,7 @@ export default function AttributesPage() {
            <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
              <Tags className="text-indigo-600" /> Attribute Options
            </h1>
-           <p className="text-slate-500 font-medium mt-2">Define valid variants (Size, Color, Material) for each category.</p>
+           <p className="text-slate-500 font-medium mt-2">Define options like Sizes, Colors, or Materials for your products.</p>
         </div>
         <button 
            onClick={() => openEditor()}
@@ -180,9 +196,9 @@ export default function AttributesPage() {
                <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
                   <List className="text-slate-300" size={32}/>
                </div>
-               <h3 className="text-lg font-bold text-slate-900">No attributes defined yet</h3>
-               <p className="text-slate-500 max-w-sm mt-2 mb-6">Create options like "Size: S, M, L" or "Color: Red, Blue" to use them in your products.</p>
-               <button onClick={() => openEditor()} className="text-indigo-600 font-bold hover:underline">Create your first option</button>
+               <h3 className="text-lg font-bold text-slate-900">No options defined yet</h3>
+               <p className="text-slate-500 max-w-sm mt-2 mb-6">Start by adding common options like "Size: Medium" or "Color: Blue".</p>
+               <button onClick={() => openEditor()} className="text-indigo-600 font-bold hover:underline">Create First Option</button>
             </div>
          )}
       </div>
@@ -200,12 +216,15 @@ export default function AttributesPage() {
              </div>
              
              <div className="p-6 space-y-5">
+                 {/* 1. CATEGORY */}
                  <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Category</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                       Product Category <HelpCircle size={12} className="text-slate-300"/>
+                    </label>
                     <input 
                       list="category-suggestions"
                       className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-indigo-500 focus:bg-white transition"
-                      placeholder="e.g. Shoes"
+                      placeholder="e.g. Shoes, T-Shirts"
                       value={formData.category}
                       onChange={e => setFormData({...formData, category: e.target.value})}
                       autoFocus={!editingId}
@@ -213,24 +232,29 @@ export default function AttributesPage() {
                     <datalist id="category-suggestions">
                        {suggestions.cats.map(c => <option key={c} value={c} />)}
                     </datalist>
+                    <p className="text-[10px] text-slate-400 mt-1 font-medium">Group this option under a specific product type.</p>
+                 </div>
+
+                 {/* 2. ATTRIBUTE NAME (Key) */}
+                 <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Attribute Name</label>
+                    <input 
+                      list="key-suggestions"
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-indigo-500 focus:bg-white transition"
+                      placeholder="e.g. Size, Color, Material"
+                      value={formData.key}
+                      onChange={e => setFormData({...formData, key: e.target.value})}
+                    />
+                    <datalist id="key-suggestions">
+                       {suggestions.keys.map(k => <option key={k} value={k} />)}
+                    </datalist>
+                    <p className="text-[10px] text-slate-400 mt-1 font-medium">What kind of property is this? (e.g. Size)</p>
                  </div>
 
                  <div className="grid grid-cols-2 gap-4">
+                    {/* 3. OPTION VALUE */}
                     <div>
-                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Key</label>
-                       <input 
-                         list="key-suggestions"
-                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-indigo-500 focus:bg-white transition"
-                         placeholder="e.g. Size"
-                         value={formData.key}
-                         onChange={e => setFormData({...formData, key: e.target.value})}
-                       />
-                       <datalist id="key-suggestions">
-                          {suggestions.keys.map(k => <option key={k} value={k} />)}
-                       </datalist>
-                    </div>
-                    <div>
-                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Value</label>
+                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Option</label>
                        <input 
                          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-indigo-500 focus:bg-white transition"
                          placeholder="e.g. XL"
@@ -238,16 +262,17 @@ export default function AttributesPage() {
                          onChange={e => setFormData({...formData, value: e.target.value})}
                        />
                     </div>
-                 </div>
-
-                 <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Sort Order</label>
-                    <input 
-                      type="number"
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-indigo-500 focus:bg-white transition"
-                      value={formData.sort_order}
-                      onChange={e => setFormData({...formData, sort_order: parseInt(e.target.value) || 0})}
-                    />
+                    
+                    {/* 4. SORT */}
+                    <div>
+                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Order</label>
+                       <input 
+                         type="number"
+                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-indigo-500 focus:bg-white transition"
+                         value={formData.sort_order}
+                         onChange={e => setFormData({...formData, sort_order: parseInt(e.target.value) || 0})}
+                       />
+                    </div>
                  </div>
              </div>
 
@@ -255,9 +280,11 @@ export default function AttributesPage() {
                  <button onClick={() => setIsEditing(false)} className="px-5 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-200 transition text-sm">Cancel</button>
                  <button 
                     onClick={handleSave} 
-                    className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-transform active:scale-95 flex items-center gap-2 text-sm"
+                    disabled={isPending}
+                    className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-transform active:scale-95 flex items-center gap-2 text-sm disabled:opacity-70 disabled:cursor-not-allowed"
                  >
-                    <Save size={18} /> Save Option
+                    {isPending ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+                    Save Option
                  </button>
              </div>
 

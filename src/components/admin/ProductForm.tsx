@@ -8,8 +8,9 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { upsertProduct } from '@/actions/product-actions';
-
+import { getCategories, createCategory } from '@/actions/category-actions';
 import { useAdminRole } from '@/hooks/useAdminRole';
+import { useAdminData } from '@/hooks/useAdminData';
 import { Database } from '@/lib/database.types';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/utils';
@@ -49,6 +50,7 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { isStaff } = useAdminRole();
+  const { storeId } = useAdminData();
   
   // --- PARENT STATE ---
   const [images, setImages] = useState<ImageItem[]>([]);
@@ -73,18 +75,22 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
   // 0. FETCH EXISTING CATEGORIES
   useEffect(() => {
     const fetchCats = async () => {
-        const { data } = await supabase.from('products').select('category');
-        if (data) {
-            const unique = Array.from(new Set(data.map(p => p.category))).filter(Boolean) as string[];
-            setExistingCategories(unique.sort());
+        if (!storeId) return;
+        
+        // ✅ NEW: Fetch from central categories table
+        const cats = await getCategories(storeId);
+        
+        if (cats) {
+            setExistingCategories(cats.map(c => c.name));
             
-            if (!initialData && unique.length > 0 && !productData.category) {
-                setProductData(prev => ({ ...prev, category: unique[0] }));
+            // Set default if needed
+            if (!initialData && cats.length > 0 && !productData.category) {
+                setProductData(prev => ({ ...prev, category: cats[0].name }));
             }
         }
     };
     fetchCats();
-  }, [initialData]); // Added dependency to prevent stale closures
+  }, [initialData, storeId]);
 
   // 1. HYDRATE DATA (Edit Mode)
   useEffect(() => {
@@ -404,9 +410,14 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
                       <div className="relative group w-full">
                         {existingCategories.length > 0 && !isNewCategory ? (
                             <>
-                                <select className={`${inputBaseClass} appearance-none capitalize`} value={productData.category} onChange={e => {
-                                    if(e.target.value === 'new') { setIsNewCategory(true); setProductData({...productData, category: ''}); }
-                                    else setProductData({...productData, category: e.target.value})
+                                <select className={`${inputBaseClass} appearance-none capitalize`} value={productData.category} onChange={(e) => {
+                                    const val = e.target.value;
+                                    if(val === 'new') { 
+                                        setIsNewCategory(true); 
+                                        setProductData({...productData, category: ''}); 
+                                    } else {
+                                        setProductData({...productData, category: val});
+                                    }
                                 }}>
                                     {existingCategories.map(c => <option key={c} value={c}>{c}</option>)}
                                     <option value="new">+ Create New Category</option>
