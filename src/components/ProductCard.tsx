@@ -1,5 +1,6 @@
 import React from 'react';
 import { Database } from '@/lib/database.types'; 
+import { slugify } from '@/lib/utils';
 import { 
   ArrowRight, 
   Tag, 
@@ -22,7 +23,7 @@ export const ProductCard = ({ product }: { product: Product }) => {
   const accentColorClass = getCategoryColor(product.category || '');
 
   return (
-    <Link href={`/product/${product.slug}`} className="group block h-full">
+    <Link href={`/product/${slugify(product.name)}`} className="group block h-full">
       <div className="relative bg-white rounded-3xl p-3 md:p-4 h-full flex flex-col transition-all duration-500 ease-out border border-gray-100 hover:border-transparent hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] hover:-translate-y-2">
         
         {/* Floating Background Glow */}

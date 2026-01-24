@@ -8,7 +8,7 @@ import { ProductConfigurator } from '@/components/product/ProductConfigurator';
 import { ProductCard } from '@/components/ProductCard';
 import { ArrowLeft, PackagePlus, Zap, Star, CheckCircle, Store, Share2, Heart } from 'lucide-react';
 import Link from 'next/link';
-
+import { slugify } from '@/lib/utils';
 // --- TYPE DEFINITIONS ---
 type ProductRow = Database['public']['Tables']['products']['Row'];
 type VariantRow = Database['public']['Tables']['product_variants']['Row'];
@@ -147,7 +147,7 @@ export function ProductClient({ storeSlug, product, relatedItems, reviews, frame
                            <p className="text-sm font-medium text-slate-500">Popular {product.category} picks</p>
                         </div>
                      </div>
-                     <Link href={`/category/${product.category}`} className="p-2 -ml-2 hover:bg-gray-50 rounded-full transition-colors text-slate-500 group">
+                     <Link href={`/category/${slugify(product.category)}`} className="p-2 -ml-2 hover:bg-gray-50 rounded-full transition-colors text-slate-500 group">
               <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
             </Link>
                   </div>

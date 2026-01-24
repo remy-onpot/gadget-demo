@@ -13,23 +13,18 @@ interface Props {
   params: Promise<{ site: string; slug: string }>;
 }
 
-// 1. DYNAMIC METADATA
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug, site } = await params;
   
-  const capitalized = slug.charAt(0).toUpperCase() + slug.slice(1);
+  // Basic decode for metadata (Service handles the real lookup logic)
+  const readableTitle = decodeURIComponent(slug).replace(/-/g, ' '); 
   
   return {
-    title: `Buy ${capitalized}s | ${site}`,
-    description: `Shop the best ${capitalized} deals on ${site}.`,
-    openGraph: {
-      title: `Shop Top Rated ${capitalized}s`,
-      description: `Check out our curated collection of ${slug}s.`
-    }
+    title: `Buy ${readableTitle} | ${site}`,
+    description: `Shop the best ${readableTitle} deals on ${site}.`,
   };
 }
 
-// 2. SERVER COMPONENT
 export default async function CategoryPage({ params }: Props) {
   const { site, slug } = await params;
   const supabase = await createClient();
@@ -43,16 +38,22 @@ export default async function CategoryPage({ params }: Props) {
 
   if (!store) return notFound();
 
-  // B. FETCH DATA (Legacy format)
-  const { products: legacyProducts, sections: legacySections } = await getCategoryPageData(slug, store.id);
+  // B. FETCH DATA (Using the new Service Logic)
+  // We pass the raw slug (e.g. "apparel-and-comfort"). 
+  // The service now returns 'categoryTitle' which is the REAL DB name ("Apparel & Comfort").
+  const { 
+    products: legacyProducts, 
+    sections: legacySections, 
+    categoryTitle 
+  } = await getCategoryPageData(slug, store.id);
 
   // C. TRANSFORM TO DB FORMAT
-  // We map the legacy fields (price, images) to the new DB fields (base_price, base_images)
+  // Your service returns legacy types, but client expects DB types.
   const products = legacyProducts.map((p: any) => ({
     ...p,
     base_price: p.price,
     base_images: p.images,
-    is_active: true, // Default for type satisfaction
+    is_active: true, 
     store_id: store.id,
     created_at: new Date().toISOString()
   })) as ProductRow[];
@@ -67,7 +68,7 @@ export default async function CategoryPage({ params }: Props) {
 
   return (
     <CategoryClient 
-      slug={slug} 
+      slug={categoryTitle} // ✅ PASS THE CORRECT NAME TO THE UI
       allProducts={products} 
       sections={sections} 
     />

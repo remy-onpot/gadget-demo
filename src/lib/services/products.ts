@@ -3,6 +3,7 @@ import { cacheService } from '@/lib/cache-wrapper';
 import { Product, CategorySection, Category, FilterRule } from '@/lib/types';
 import { Database } from '@/lib/database.types';
 import { matchesRules } from '@/lib/filter-engine';
+import { slugify } from '@/lib/utils'; // ✅ Import slugify
 
 // 0. AUTO-GENERATED DB TYPES
 type ProductRow = Database['public']['Tables']['products']['Row'];
@@ -73,7 +74,7 @@ const getFeaturedInternal = async (storeId: string): Promise<Product[]> => {
   const { data } = await supabase
     .from('products')
     .select('*, variants:product_variants(*)')
-    .eq('store_id', storeId) // ✅ Filter by Store
+    .eq('store_id', storeId) 
     .eq('is_active', true)
     .eq('is_featured', true)
     .limit(8);
@@ -100,41 +101,38 @@ const getCategoryFeedInternal = async (storeId: string): Promise<FeedData> => {
   const supabase = createStaticClient();
   const RAIL_LIMIT = 8;
 
-  // A. Fetch Everything Scoped to Store
   const [productsRes, sectionsRes, metaRes] = await Promise.all([
     supabase
         .from('products')
         .select('*, variants:product_variants(price)')
-        .eq('store_id', storeId) // ✅ Filter
+        .eq('store_id', storeId)
         .eq('is_active', true)
         .order('created_at', { ascending: false }),
     
     supabase
         .from('category_sections')
         .select('*')
-        .eq('store_id', storeId) // ✅ Filter
+        .eq('store_id', storeId)
         .eq('is_active', true)
         .order('sort_order'),
 
     supabase
         .from('category_metadata')
         .select('*')
-        .eq('store_id', storeId) // ✅ Filter
+        .eq('store_id', storeId)
   ]);
 
   const allProducts = (productsRes.data as unknown as ProductWithPrice[] || []).map(mapToListProduct);
   const sections = sectionsRes.data || [];
   
-  // B. Map Metadata
   const metadataMap: Record<string, CategoryMetaRow> = {};
   metaRes.data?.forEach((m) => {
     metadataMap[m.slug.toLowerCase()] = m;
   });
 
-  // C. Group Products
   const grouped: Record<string, Product[]> = {};
 
-  // STRATEGY 1: Admin Sections
+  // Admin Sections
   if (sections.length > 0) {
       sections.forEach(section => {
           const rules = section.filter_rules as unknown as FilterRule[];
@@ -156,7 +154,7 @@ const getCategoryFeedInternal = async (storeId: string): Promise<FeedData> => {
       });
   }
 
-  // STRATEGY 2: Fallback
+  // Fallback
   allProducts.forEach(p => {
       const catKey = (p.category || 'uncategorized').toLowerCase();
       if (!grouped[catKey]) grouped[catKey] = [];
@@ -183,13 +181,12 @@ export const getCategoryFeed = cacheService(
 // ==========================================
 // 3. SINGLE PRODUCT
 // ==========================================
-// Note: We need storeId now because slugs are only unique PER store
 const getProductBySlugInternal = async (slug: string, storeId: string): Promise<Product | null> => {
   const supabase = createStaticClient();
   const { data } = await supabase
     .from('products')
     .select('*, variants:product_variants(*)')
-    .eq('store_id', storeId) // ✅ Filter
+    .eq('store_id', storeId)
     .eq('slug', slug)
     .single();
 
@@ -211,7 +208,7 @@ const getRelatedProductsInternal = async (category: string, excludeId: string, s
   const { data } = await supabase
     .from('products')
     .select('*, variants:product_variants(price)')
-    .eq('store_id', storeId) // ✅ Filter
+    .eq('store_id', storeId) 
     .eq('category', category)
     .neq('id', excludeId)
     .eq('is_active', true)
@@ -228,32 +225,52 @@ export const getRelatedProducts = cacheService(
 );
 
 // ==========================================
-// 5. CATEGORY PAGE DATA
+// 5. CATEGORY PAGE DATA (Updated with Reverse Lookup)
 // ==========================================
 export type CategoryPageData = {
   products: Product[];
   sections: CategorySection[];
+  categoryTitle: string; // ✅ Added title
 };
 
-const getCategoryPageDataInternal = async (slug: string, storeId: string): Promise<CategoryPageData> => {
+const getCategoryPageDataInternal = async (urlSlug: string, storeId: string): Promise<CategoryPageData> => {
   const supabase = createStaticClient();
 
-  // A. Products
+  // 1. REVERSE LOOKUP: Find the Real Category Name
+  // Fetch all unique categories to see which one matches the slug
+  const { data: categories } = await supabase
+    .from('products')
+    .select('category')
+    .eq('store_id', storeId)
+    .not('category', 'is', null);
+
+  const uniqueCategories = Array.from(new Set(categories?.map(c => c.category)));
+  
+  // Find the match: slugify("Apparel & Comfort") === "apparel-and-comfort"
+  const realCategoryName = uniqueCategories.find(cat => 
+    slugify(cat || '') === urlSlug
+  );
+
+  // Fallback to decodeURIComponent if no smart match found
+  const searchName = realCategoryName || decodeURIComponent(urlSlug);
+
+  // 2. Fetch Products using the REAL Database Name
   const { data: productsRaw } = await supabase
     .from('products')
     .select('*, variants:product_variants(price)')
-    .eq('store_id', storeId) // ✅ Filter
-    .eq('category', slug)
+    .eq('store_id', storeId)
+    .eq('category', searchName) // ✅ Correct Name
     .eq('is_active', true);
 
   const products = (productsRaw as unknown as ProductWithPrice[] || []).map(mapToListProduct);
 
-  // B. Layouts
+  // 3. Fetch Layouts
+  // We check both the slug (if Admin saved it as slug) and the name
   const { data: sectionsRaw } = await supabase
     .from('category_sections')
     .select('*')
-    .eq('store_id', storeId) // ✅ Filter
-    .eq('category_slug', slug)
+    .eq('store_id', storeId)
+    .or(`category_slug.eq.${urlSlug},category_slug.eq.${searchName}`)
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
 
@@ -267,7 +284,7 @@ const getCategoryPageDataInternal = async (slug: string, storeId: string): Promi
       filter_rules: (s.filter_rules as unknown as FilterRule[]) || []
   }));
 
-  return { products, sections };
+  return { products, sections, categoryTitle: searchName };
 };
 
 export const getCategoryPageData = cacheService(

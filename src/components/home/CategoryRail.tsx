@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Database } from '@/lib/database.types'; // ✅ Correct Import
 import { ProductCard } from '@/components/ProductCard';
-
+import { slugify } from '@/lib/utils';
 // ✅ Define Types from the Database
 type ProductRow = Database['public']['Tables']['products']['Row'];
 
@@ -60,7 +60,7 @@ export const CategoryRail = ({ category, products, settings }: RailProps) => {
            </div>
            
            <div className="flex items-center gap-4">
-              <Link href={`/category/${category}`} className="hidden md:flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-orange-500 transition-colors">
+              <Link href={`/category/${slugify(category)}`} className="hidden md:flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-orange-500 transition-colors">
                   View All <ArrowRight size={16}/>
               </Link>
               <div className="hidden md:flex gap-2">
