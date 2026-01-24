@@ -69,7 +69,10 @@ export async function upsertProduct(
     .select()
     .single();
 
-  if (prodError) throw new Error(`Product Error: ${prodError.message}`);
+  if (prodError) {
+    console.error("Product Error:", prodError);
+    return { success: false, error: `Database Error: ${prodError.message}` };
+  }
 
   const productId = product.id;
 
@@ -99,3 +102,22 @@ export async function upsertProduct(
 revalidatePath('/', 'layout');  
   return { success: true, productId };
 }}
+
+// ... existing upsertProduct code ...
+
+export async function deleteProduct(productId: string) {
+  const supabase = await createClient();
+  
+  // RLS policies will automatically ensure users can only delete their own store's products
+  const { error } = await supabase
+    .from('products')
+    .delete()
+    .eq('id', productId);
+
+  if (error) {
+    console.error("Delete Error:", error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}

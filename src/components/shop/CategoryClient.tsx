@@ -100,8 +100,8 @@ export function CategoryClient({ slug, allProducts, sections }: CategoryClientPr
                   <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6 animate-bounce">
                      <Plane className="text-blue-600 w-10 h-10" />
                   </div>
-                  <h2 className="text-2xl md:text-3xl font-black text-slate-900 mb-3">No devices in stock.</h2>
-                  <p className="text-slate-500 max-w-md text-lg mb-8 leading-relaxed">We source directly from the USA.</p>
+                  <h2 className="text-2xl md:text-3xl font-black text-slate-900 mb-3">No products in this category.</h2>
+                  <p className="text-slate-500 max-w-md text-lg mb-8 leading-relaxed">DM to order your products.</p>
                   <Link href="/preorder" className="bg-[#F97316] text-white px-8 py-4 rounded-xl font-bold flex items-center gap-2 hover:scale-105 transition-transform">
                      <PackageSearch size={20} /> Request Order
                   </Link>

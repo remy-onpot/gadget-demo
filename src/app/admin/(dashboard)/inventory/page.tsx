@@ -2,14 +2,15 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useAdminData } from '@/hooks/useAdminData'; // Import the hook
+import { useAdminData } from '@/hooks/useAdminData'; 
+import { deleteProduct } from '@/actions/product-actions'; 
 import { Database } from '@/lib/database.types'; 
 import { 
-  Plus, Search, Filter, MoreVertical, 
-  Package, AlertTriangle, CheckCircle, Loader2,
-  ChevronRight, Edit2
+  Plus, Search, Package, AlertTriangle, Loader2, Edit2, Trash2
 } from 'lucide-react';
 import { ProductForm } from '@/components/admin/ProductForm';
+import { toast } from 'sonner'; 
+import { SecurityModal } from '@/components/admin/SecurityModal'; 
 
 type ProductRow = Database['public']['Tables']['products']['Row'];
 type VariantRow = Database['public']['Tables']['product_variants']['Row'];
@@ -19,7 +20,6 @@ type InventoryItem = ProductRow & {
 };
 
 export default function InventoryPage() {
-  // 1. Use the hook
   const { storeId, loading: authLoading } = useAdminData();
   
   const [products, setProducts] = useState<InventoryItem[]>([]);
@@ -27,13 +27,11 @@ export default function InventoryPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<InventoryItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-
+const [deleteTarget, setDeleteTarget] = useState<{ id: string, name: string } | null>(null);
   useEffect(() => {
-    // 2. WAIT for the hook to find the store
     if (!storeId) return;
-    
     fetchInventory();
-  }, [storeId]); // 👈 Only run when storeId is ready
+  }, [storeId]); 
 
   const fetchInventory = async () => {
     if (!storeId) return;
@@ -42,24 +40,50 @@ export default function InventoryPage() {
     const { data, error } = await supabase
       .from('products')
       .select('*, product_variants(*)') 
-      .eq('store_id', storeId) // ✅ Use the ID from the hook
+      .eq('store_id', storeId) 
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error("Error fetching inventory:", error);
+      toast.error("Failed to load inventory");
     } else if (data) {
         setProducts(data as unknown as InventoryItem[]);
     }
     setLoading(false);
   };
+  
+
+  // 1. Initial Click just opens the modal
+  const requestDelete = (id: string, name: string) => {
+    setDeleteTarget({ id, name });
+  };
+
+  // 2. The Actual Action (Passed to Modal)
+  const executeDelete = async () => {
+    if (!deleteTarget) return;
+
+    // Optimistic UI Update
+    const previousProducts = [...products];
+    setProducts(products.filter(p => p.id !== deleteTarget.id));
+
+    const res = await deleteProduct(deleteTarget.id);
+    
+    if (res.success) {
+       toast.success("Product deleted successfully");
+       setDeleteTarget(null);
+    } else {
+       // Rollback if server fails
+       setProducts(previousProducts);
+       toast.error("Failed to delete: " + res.error);
+    }
+  };
 
   if (authLoading) return <div className="h-[50vh] flex items-center justify-center"><Loader2 className="animate-spin text-blue-600" size={32}/></div>;
-  if (loading) return <div className="h-[50vh] flex items-center justify-center"><Loader2 className="animate-spin text-blue-600" size={32}/></div>;
+  if (loading && products.length === 0) return <div className="h-[50vh] flex items-center justify-center"><Loader2 className="animate-spin text-blue-600" size={32}/></div>;
 
   return (
-    <div className="max-w-6xl mx-auto pb-24 md:pb-20 px-4 md:px-0">
+    <div className="max-w-6xl mx-auto pb-24 md:pb-20 px-4 md:px-0 animate-in fade-in duration-500">
       
-      {/* HEADER & SEARCH (Mobile Optimized) */}
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 md:mb-8 mt-4 md:mt-0">
         <div>
            <h1 className="text-2xl md:text-3xl font-black text-slate-900 flex items-center gap-3">
@@ -124,7 +148,7 @@ export default function InventoryPage() {
                                  )}
                                </div>
                                <div>
-                                 <div className="font-bold text-slate-900">{product.name}</div>
+                                 <div className="font-bold text-slate-900 line-clamp-1">{product.name}</div>
                                  <div className="text-[10px] text-slate-400 font-mono uppercase">{variants.length} Variants</div>
                                </div>
                              </div>
@@ -136,8 +160,25 @@ export default function InventoryPage() {
                              : <span className="text-green-600 font-bold text-xs">In Stock ({totalStock})</span>}
                            </td>
                            <td className="px-6 py-4 font-mono font-bold text-slate-700">₵{(product.base_price || 0).toLocaleString()}</td>
+                           
+                           {/* ✅ ACTIONS COLUMN */}
                            <td className="px-6 py-4 text-right">
-                             <button onClick={() => { setSelectedProduct(product); setIsEditing(true); }} className="text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg font-bold text-xs">Manage</button>
+                             <div className="flex items-center justify-end gap-2">
+                                <button 
+                                  onClick={() => { setSelectedProduct(product); setIsEditing(true); }} 
+                                  className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-all"
+                                  title="Edit Product"
+                                >
+                                   <Edit2 size={16} />
+                                </button>
+                                <button 
+                                  onClick={() => requestDelete(product.id, product.name)}
+                                  className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all"
+                                  title="Delete Product"
+                                >
+                                   <Trash2 size={16} />
+                                </button>
+                             </div>
                            </td>
                          </tr>
                        );
@@ -173,6 +214,15 @@ export default function InventoryPage() {
             </div>
          </div>
       )}
+
+      {/* ✅ SECURITY MODAL */}
+      <SecurityModal 
+         isOpen={!!deleteTarget}
+         onClose={() => setDeleteTarget(null)}
+         onConfirm={executeDelete}
+         title="Confirm Deletion"
+         description={`You are about to delete "${deleteTarget?.name}". This cannot be undone.`}
+      />
     </div>
   );
 }

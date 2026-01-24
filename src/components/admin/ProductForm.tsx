@@ -119,25 +119,28 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
   // 2. FETCH ATTRIBUTES BASED ON CATEGORY
   useEffect(() => {
     let isMounted = true;
+    
     const fetchOptions = async () => {
       setAvailableOptions([]); 
       
-      if (!initialData || productData.category !== initialData.category) {
+      // Only reset selection if category ACTUALLY changed significantly
+      if (!initialData || productData.category.toLowerCase() !== initialData.category.toLowerCase()) {
          setSelectedAttributes({});
       }
 
       if (!productData.category) return;
 
+      // ✅ FIX: Fetch logic handles case sensitivity better
       const { data } = await supabase
         .from('attribute_options')
         .select('*')
-        .eq('category', productData.category)
+        .ilike('category', productData.category) // Use ilike for case-insensitive match
         .order('sort_order');
       
       if (isMounted && data) {
         setAvailableOptions(data);
         
-        // Restore selected attributes from existing variants if editing
+        // Restore selected attributes logic (Unchanged)
         if (initialData && productData.category === initialData.category && initialData.product_variants?.[0]?.specs) {
            const firstVariantSpecs = initialData.product_variants[0].specs as Record<string, string>;
            const restoredAttributes: Record<string, string[]> = {};
@@ -151,6 +154,7 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
         }
       }
     };
+
     fetchOptions();
     return () => { isMounted = false; };
   }, [productData.category, initialData]);
@@ -261,21 +265,24 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
   };
 
   const handleFinalSave = async () => {
+    // 1. Validation Check
     if (generatedVariants.length === 0) {
         toast.error("Please generate variants first!");
         return;
     }
+    
     setLoading(true);
     
     try {
-      // 1. Upload Images
+      // 2. Upload Images (Parallel)
       const finalImageUrls = await Promise.all(
         images.map(async (img) => {
            if (img.file) {
              const fileName = `${Date.now()}-${img.file.name.replace(/[^a-zA-Z0-9.]/g, '')}`;
              const path = `products/${fileName}`;
              const { error } = await supabase.storage.from('products').upload(path, img.file);
-             if (error) throw error;
+             if (error) throw new Error("Image upload failed: " + error.message);
+             
              const { data } = supabase.storage.from('products').getPublicUrl(path);
              return data.publicUrl;
            }
@@ -283,35 +290,40 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
         })
       );
 
-      // 2. Prepare Product Payload
+      // 3. Prepare Payload
       const productPayload = {
-        id: initialData?.id, // undefined if new
+        id: initialData?.id, 
         name: productData.name,
         slug: productData.slug + (initialData ? '' : `-${Math.floor(Math.random() * 1000)}`),
         brand: productData.brand,
-        category: productData.category.toLowerCase(), 
+        category: productData.category, 
         description: productData.description,
         base_price: Number(productData.basePrice),
         base_images: finalImageUrls,
         is_active: true
       };
 
-      // 3. Prepare Variant Payload (omit product_id, server action handles it)
       const variantsPayload = generatedVariants.map(v => ({
         condition: v.condition,
-        specs: v.specs, // Supabase handles Record<string,string> -> Json conversion
+        specs: v.specs, 
         price: v.price,
         stock: v.stock
       }));
 
-      await upsertProduct(productPayload, variantsPayload);
+      // 4. Server Action Call
+      const res = await upsertProduct(productPayload, variantsPayload);
 
-      toast.success(initialData ? "Product Updated!" : "Product Published!");
-      onClose();
+      // 5. Success Handling
+      if (res?.success) {
+         toast.success(initialData ? "Inventory Updated" : "Product Published", {
+            description: `${productData.name} saved successfully.`
+         });
+         onClose(); // ✅ This closes the modal
+      }
 
-    } catch (e: unknown) { // ✅ FIX 4: Safe Error Handling
+    } catch (e: any) {
       console.error(e);
-      toast.error("Error: " + getErrorMessage(e));
+      toast.error(e.message || "Failed to save product");
     } finally {
       setLoading(false);
     }
