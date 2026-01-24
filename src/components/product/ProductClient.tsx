@@ -147,9 +147,9 @@ export function ProductClient({ storeSlug, product, relatedItems, reviews, frame
                            <p className="text-sm font-medium text-slate-500">Popular {product.category} picks</p>
                         </div>
                      </div>
-                     <Link href={`/sites/${storeSlug}/category/${product.category}`} className="text-sm font-bold text-[var(--primary)] hover:opacity-80 flex items-center gap-1">
-                        View all {product.category}s <ArrowLeft className="rotate-180" size={16}/>
-                     </Link>
+                     <Link href={`/category/${product.category}`} className="p-2 -ml-2 hover:bg-gray-50 rounded-full transition-colors text-slate-500 group">
+              <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+            </Link>
                   </div>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
