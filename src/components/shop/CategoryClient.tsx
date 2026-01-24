@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Database } from '@/lib/database.types';
-import { FilterRule } from '@/lib/types'; 
+import { Database } from '@/lib/database.types'; 
+import { FilterRule } from '@/lib/types';
 import { matchesRules } from '@/lib/filter-engine'; 
 import { ProductCard } from '@/components/ProductCard';
-import { ArrowRight, Grid, LayoutList, Filter, ArrowLeft, Plane, PackageSearch } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Plane, PackageSearch, Grid } from 'lucide-react'; // Added Grid icon
 import Link from 'next/link';
 
 // 1. Define Types from Database
@@ -14,7 +14,6 @@ type CategorySectionRow = Database['public']['Tables']['category_sections']['Row
 
 // --- SUB-COMPONENTS ---
 
-// Simple placeholder for BrandRow since it wasn't in your snippet
 const BrandRow = () => null;
 
 const ProductRow = ({ title, products, onViewAll }: { title: string, products: ProductRow[], onViewAll: () => void }) => {
@@ -46,7 +45,7 @@ const ProductRow = ({ title, products, onViewAll }: { title: string, products: P
 
 // --- MAIN CLIENT COMPONENT ---
 interface CategoryClientProps {
-    slug: string;
+    slug: string; // This is the Category Title (e.g. "Apparel & Comfort")
     allProducts: ProductRow[];
     sections: CategorySectionRow[]; 
 }
@@ -56,13 +55,11 @@ export function CategoryClient({ slug, allProducts, sections }: CategoryClientPr
 
   // Logic: Map raw sections to processed sections
   const processedSections = sections.map(section => {
-     // Cast the JSON filter_rules to the type expected by matchesRules
      const rules = (section.filter_rules as unknown as FilterRule[]) || [];
-     
      return {
        ...section,
        filter_rules: rules,
-       // @ts-ignore - matchesRules might expect legacy type, but logic should hold if fields match
+       // @ts-ignore 
        products: allProducts.filter(p => matchesRules(p as any, rules))
      };
   });
@@ -73,12 +70,17 @@ export function CategoryClient({ slug, allProducts, sections }: CategoryClientPr
     setActiveGrid({ title, products: fullFilteredList });
   };
 
+  // ✅ NEW: Default View Logic
+  // If we have products but NO sections, we show a default "All Products" grid.
+  const showDefaultGrid = processedSections.length === 0 && allProducts.length > 0;
+  const showEmptyState = processedSections.length === 0 && allProducts.length === 0;
+
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-slate-900 font-sans pb-20">
        
        {/* CONTENT */}
        {activeGrid ? (
-         // FullGridView Logic
+         // A. Specific Section View (Drill Down)
          <div className="container mx-auto px-4 py-8 animate-in zoom-in-95 duration-300">
              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
                 <button onClick={() => setActiveGrid(null)} className="text-sm text-gray-500 hover:text-orange-600 flex items-center gap-1 mb-2 font-bold">
@@ -92,8 +94,8 @@ export function CategoryClient({ slug, allProducts, sections }: CategoryClientPr
          </div>
        ) : (
          <div>
-            {processedSections.length === 0 ? (
-               // Empty State
+            {/* B. Empty State (Truly Empty) */}
+            {showEmptyState && (
                <div className="flex flex-col items-center justify-center py-24 px-4 text-center animate-in zoom-in-95">
                   <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6 animate-bounce">
                      <Plane className="text-blue-600 w-10 h-10" />
@@ -104,20 +106,40 @@ export function CategoryClient({ slug, allProducts, sections }: CategoryClientPr
                      <PackageSearch size={20} /> Request Order
                   </Link>
                </div>
-            ) : (
-               processedSections.map(section => {
-                  if (section.section_type === 'brand_row') return <div key={section.id}><BrandRow /></div>;
-                  
-                  return (
-                     <ProductRow 
-                        key={section.id} 
-                        title={section.title}
-                        products={section.products} 
-                        onViewAll={() => handleSectionViewAll(section.title, section.filter_rules)} 
-                     />
-                  );
-               })
             )}
+
+            {/* C. Default Fallback Grid (Products exist, but no sections) */}
+            {showDefaultGrid && (
+               <div className="container mx-auto px-4 py-12 animate-in fade-in slide-in-from-bottom-4">
+                   <div className="flex items-center gap-3 mb-8">
+                      <div className="p-3 bg-slate-100 rounded-full text-slate-500">
+                         <Grid size={24} />
+                      </div>
+                      <div>
+                         <h1 className="text-3xl font-black text-slate-900">{slug}</h1>
+                         <p className="text-slate-500 font-medium">{allProducts.length} items available</p>
+                      </div>
+                   </div>
+                   
+                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+                      {allProducts.map(p => <ProductCard key={p.id} product={p} />)}
+                   </div>
+               </div>
+            )}
+
+            {/* D. Standard Section View (Sections exist) */}
+            {processedSections.map(section => {
+               if (section.section_type === 'brand_row') return <div key={section.id}><BrandRow /></div>;
+               
+               return (
+                  <ProductRow 
+                     key={section.id} 
+                     title={section.title}
+                     products={section.products} 
+                     onViewAll={() => handleSectionViewAll(section.title, section.filter_rules)} 
+                  />
+               );
+            })}
          </div>
        )}
     </div>
