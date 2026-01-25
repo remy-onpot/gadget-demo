@@ -84,7 +84,7 @@ export type Database = {
       }
       attribute_options: {
         Row: {
-          category: string
+          category_id: string | null
           id: string
           key: string
           sort_order: number | null
@@ -92,7 +92,7 @@ export type Database = {
           value: string
         }
         Insert: {
-          category: string
+          category_id?: string | null
           id?: string
           key: string
           sort_order?: number | null
@@ -100,7 +100,7 @@ export type Database = {
           value: string
         }
         Update: {
-          category?: string
+          category_id?: string | null
           id?: string
           key?: string
           sort_order?: number | null
@@ -108,6 +108,13 @@ export type Database = {
           value?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "attribute_options_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "attribute_options_store_id_fkey"
             columns: ["store_id"]
@@ -215,68 +222,39 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
-          name: string
-          slug: string
-          store_id: string
-        }
-        Insert: {
-          created_at?: string | null
-          id?: string
-          name: string
-          slug: string
-          store_id: string
-        }
-        Update: {
-          created_at?: string | null
-          id?: string
-          name?: string
-          slug?: string
-          store_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "categories_store_id_fkey"
-            columns: ["store_id"]
-            isOneToOne: false
-            referencedRelation: "stores"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      category_metadata: {
-        Row: {
-          created_at: string | null
           image_url: string | null
+          name: string
           show_overlay: boolean | null
           slug: string
           sort_order: number | null
           store_id: string
           subtitle: string | null
-          title: string | null
         }
         Insert: {
           created_at?: string | null
+          id?: string
           image_url?: string | null
+          name: string
           show_overlay?: boolean | null
           slug: string
           sort_order?: number | null
           store_id: string
           subtitle?: string | null
-          title?: string | null
         }
         Update: {
           created_at?: string | null
+          id?: string
           image_url?: string | null
+          name?: string
           show_overlay?: boolean | null
           slug?: string
           sort_order?: number | null
           store_id?: string
           subtitle?: string | null
-          title?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "category_metadata_store_id_fkey"
+            foreignKeyName: "categories_store_id_fkey"
             columns: ["store_id"]
             isOneToOne: false
             referencedRelation: "stores"
@@ -585,6 +563,7 @@ export type Database = {
           sku: string | null
           specs: Json | null
           stock: number | null
+          updated_at: string | null
         }
         Insert: {
           condition: string
@@ -598,6 +577,7 @@ export type Database = {
           sku?: string | null
           specs?: Json | null
           stock?: number | null
+          updated_at?: string | null
         }
         Update: {
           condition?: string
@@ -611,6 +591,7 @@ export type Database = {
           sku?: string | null
           specs?: Json | null
           stock?: number | null
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -627,7 +608,7 @@ export type Database = {
           base_images: string[] | null
           base_price: number
           brand: string
-          category: string
+          category_id: string | null
           created_at: string | null
           description: string | null
           id: string
@@ -641,7 +622,7 @@ export type Database = {
           base_images?: string[] | null
           base_price: number
           brand: string
-          category: string
+          category_id?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
@@ -655,7 +636,7 @@ export type Database = {
           base_images?: string[] | null
           base_price?: number
           brand?: string
-          category?: string
+          category_id?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
@@ -666,6 +647,13 @@ export type Database = {
           store_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "products_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "products_store_id_fkey"
             columns: ["store_id"]
@@ -797,7 +785,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      slugify_text: { Args: { value: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never

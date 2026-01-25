@@ -2,108 +2,65 @@
 
 import React, { useEffect, useState, useTransition } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useAdminData } from '@/hooks/useAdminData'; // Import the hook
-import { updateCategoryMeta } from '@/app/admin/(dashboard)/actions';
+import { useAdminData } from '@/hooks/useAdminData';
+import { updateCategoryMeta } from '@/app/admin/(dashboard)/actions'; 
 import { Database } from '@/lib/database.types';
-import { Save, Loader2, Layers, RefreshCw, ImagePlus, Upload, Trash2, AlertCircle } from 'lucide-react';
+import { Save, Loader2, ImageIcon, LayoutTemplate, Eye, EyeOff, GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
 
-type CategoryMeta = Database['public']['Tables']['category_metadata']['Row'];
+// ✅ 1. Define Type based on Master Table
+type CategoryRow = Database['public']['Tables']['categories']['Row'];
 
 export default function LayoutsPage() {
-  // 1. Use the hook
   const { storeId, loading: authLoading } = useAdminData();
-  
-  const [categories, setCategories] = useState<CategoryMeta[]>([]);
+  const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState<string | null>(null);
-  
   const [isPending, startTransition] = useTransition();
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
 
+  // 2. FETCH DATA (From Master Table)
   useEffect(() => {
-    // 2. WAIT for the hook to find the store
     if (!storeId) return;
     
-    fetchData();
-  }, [storeId]); // 👈 Only run when storeId is ready
+    const fetchData = async () => {
+      setLoading(true);
+      // ✅ Query directly from 'categories'
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*')
+        .eq('store_id', storeId)
+        .order('sort_order', { ascending: true });
 
-  // Prevent accidental navigation if dirty
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasUnsavedChanges) {
-        e.preventDefault();
-        e.returnValue = '';
+      if (data) {
+        setCategories(data);
+      } else if (error) {
+        toast.error("Failed to load categories");
       }
+      setLoading(false);
     };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [hasUnsavedChanges]);
 
-  const fetchData = async () => {
-    if (!storeId) return;
-    
-    setLoading(true);
-    
-    // 1. Fetch Metadata with storeId filter
-    const { data: meta } = await supabase
-      .from('category_metadata')
-      .select('*')
-      .eq('store_id', storeId); // ✅ Use the ID from the hook
-      
-    const metaMap = new Map(meta?.map(m => [m.slug, m]) || []);
+    fetchData();
+  }, [storeId]);
 
-    // 2. Fetch Active Categories from Products
-    const { data: products } = await supabase
-      .from('products')
-      .select('category')
-      .eq('store_id', storeId) // ✅ Use the ID from the hook
-      .eq('is_active', true);
-      
-    const activeSlugs = Array.from(new Set(
-      products?.map(p => (p.category || 'uncategorized').toLowerCase()) || []
+  // 3. HANDLE LOCAL UPDATES
+  const updateLocalState = (id: string, updates: Partial<CategoryRow>) => {
+    setCategories(prev => prev.map(cat => 
+      cat.id === id ? { ...cat, ...updates } : cat
     ));
-
-    // 3. Merge (Create default entry if missing)
-    const mergedList: CategoryMeta[] = activeSlugs.map(slug => {
-      const existing = metaMap.get(slug);
-      
-      if (existing) return existing;
-
-      return { 
-        slug, 
-        title: slug.charAt(0).toUpperCase() + slug.slice(1) + 's',
-        subtitle: 'Shop Collection', 
-        image_url: null,
-        show_overlay: true,
-        sort_order: 100,
-        created_at: new Date().toISOString(),
-        store_id: storeId // ✅ Use the ID from the hook
-      } as CategoryMeta;
-    });
-
-    setCategories(mergedList);
-    setLoading(false);
-    setHasUnsavedChanges(false);
   };
 
-  const handleUpdate = (slug: string, field: keyof CategoryMeta, value: string | boolean | null) => {
-    setCategories(prev => prev.map(c => c.slug === slug ? { ...c, [field]: value } : c));
-    setHasUnsavedChanges(true);
-  };
-
-  const handleImageUpload = async (slug: string, file: File) => {
-    if (!file) return;
-    setUploading(slug);
-
+  // 4. IMAGE UPLOAD LOGIC
+  const handleImageUpload = async (id: string, file: File) => {
+    setUploadingId(id);
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${slug}-${Date.now()}.${fileExt}`;
+      const fileName = `cat-${id}-${Date.now()}.${fileExt}`;
       const filePath = `categories/${fileName}`;
 
+      // Upload to 'marketing' bucket (Standardized)
       const { error: uploadError } = await supabase.storage
-        .from('marketing')
-        .upload(filePath, file, { upsert: true });
+        .from('marketing') 
+        .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
@@ -111,199 +68,136 @@ export default function LayoutsPage() {
         .from('marketing')
         .getPublicUrl(filePath);
 
-      handleUpdate(slug, 'image_url', publicUrl);
-      toast.success("Image staged");
-
-    } catch (error: any) {
-      toast.error('Upload failed: ' + (error.message || 'Unknown error'));
+      updateLocalState(id, { image_url: publicUrl });
+      toast.success("Image uploaded");
+    } catch (e: any) {
+      toast.error("Upload failed: " + e.message);
     } finally {
-      setUploading(null);
+      setUploadingId(null);
     }
   };
 
-  const saveAll = () => {
+  // 5. SAVE ACTION
+  const handleSave = () => {
     startTransition(async () => {
-        try {
-            await updateCategoryMeta(categories);
-            setHasUnsavedChanges(false);
-            toast.success("Layouts saved successfully");
-        } catch (err: any) {
-            toast.error("Failed to save: " + (err.message || "Unknown error"));
-        }
+      try {
+        // Calls the updated action which writes to 'categories' table
+        await updateCategoryMeta(categories);
+        toast.success("Layouts saved successfully");
+      } catch (e: any) {
+        toast.error("Failed to save: " + e.message);
+      }
     });
   };
 
-  if (authLoading) return <div className="p-20 text-center flex flex-col items-center gap-4"><Loader2 className="animate-spin text-orange-500" size={32}/><p className="text-slate-400 font-medium">Loading...</p></div>;
-  if (loading) return <div className="p-20 text-center flex flex-col items-center gap-4"><Loader2 className="animate-spin text-orange-500" size={32}/><p className="text-slate-400 font-medium">Loading your categories...</p></div>;
+  if (authLoading || loading) return <div className="h-[60vh] flex items-center justify-center"><Loader2 className="animate-spin text-slate-300" size={32}/></div>;
 
   return (
-    <div className="max-w-5xl mx-auto pb-32">
-      {/* STICKY HEADER */}
-      <div className="sticky top-0 z-50 bg-slate-50/95 backdrop-blur-sm py-6 border-b border-gray-200 mb-10 -mx-4 px-4 md:mx-0 md:px-0 transition-all">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3 tracking-tight">
-              <Layers className="text-orange-500 fill-orange-100" size={32} /> 
-              Storefront Layouts
-            </h1>
-          </div>
-          
-          <div className="flex items-center gap-3">
-              {hasUnsavedChanges && (
-                <span className="text-xs font-bold text-amber-600 bg-amber-100 px-3 py-1 rounded-full animate-pulse flex items-center gap-1">
-                   <AlertCircle size={12} /> Unsaved Changes
-                </span>
-              )}
-
-              <button 
-                onClick={fetchData}
-                className="p-3 rounded-xl border border-gray-200 text-slate-500 hover:bg-white hover:text-slate-900 transition"
-                title="Discard Changes / Refresh"
-              >
-                <RefreshCw size={20} />
-              </button>
-
-              <button 
-                onClick={saveAll}
-                disabled={isPending || !hasUnsavedChanges}
-                className={`
-                  px-8 py-3 rounded-xl font-bold transition shadow-lg flex items-center gap-2
-                  ${hasUnsavedChanges 
-                    ? 'bg-orange-500 text-white hover:bg-orange-600 shadow-orange-500/20 scale-105' 
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                  }
-                `}
-              >
-                {isPending ? <Loader2 className="animate-spin" /> : <><Save size={18} /> Save Changes</>}
-              </button>
-          </div>
+    <div className="max-w-5xl mx-auto pb-24 animate-in fade-in duration-500">
+      <div className="mb-8 flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
+             <LayoutTemplate className="text-indigo-600" /> Category Layouts
+          </h1>
+          <p className="text-slate-500 mt-1 font-medium">Customize active categories for your storefront.</p>
         </div>
       </div>
 
-      {/* Grid of Editors */}
-      <div className="grid gap-8">
-        {categories.map((cat) => (
-          <div key={cat.slug} className="bg-white p-6 md:p-8 rounded-3xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow flex flex-col md:flex-row gap-8">
-            
-            {/* Visual Preview */}
-            <div className="w-full md:w-64 flex-shrink-0">
-               <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Preview Card</label>
-                  {!cat.show_overlay && (
-                    <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-bold">GRAPHIC MODE</span>
-                  )}
-               </div>
-               
-               <div className="aspect-[4/5] rounded-2xl bg-slate-900 overflow-hidden relative border border-slate-200 group">
-                  {cat.image_url ? (
-                    <>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img 
-                        src={cat.image_url} 
-                        alt="Preview" 
-                        className={`w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 ${cat.show_overlay ? 'opacity-80' : 'opacity-100'}`} 
-                      />
-                      {cat.show_overlay && (
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                      )}
-                    </>
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-600 bg-slate-100 border-2 border-dashed border-slate-200">
-                        <ImagePlus size={32} className="mb-2 opacity-50" />
-                        <span className="text-xs font-bold">No Image</span>
-                    </div>
-                  )}
-                  
-                  {cat.show_overlay && (
-                    <div className="absolute bottom-0 left-0 p-5 w-full">
-                       <h4 className="text-2xl font-black text-white leading-none mb-2">{cat.title}</h4>
-                       <p className="text-xs text-gray-300 font-medium">{cat.subtitle}</p>
-                    </div>
-                  )}
-               </div>
+      <div className="space-y-4">
+        {categories.length === 0 ? (
+            <div className="p-12 text-center bg-white rounded-2xl border-2 border-dashed border-slate-200 text-slate-400">
+                <p className="font-bold">No categories found.</p>
+                <p className="text-sm">Create products or attributes to generate categories automatically.</p>
             </div>
+        ) : (
+            categories.map((cat) => (
+                <div key={cat.id} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col md:flex-row gap-6 items-start md:items-center group hover:border-indigo-100 transition-all">
+                    
+                    {/* Visual Grip */}
+                    <div className="text-slate-200 cursor-grab active:cursor-grabbing hidden md:block">
+                        <GripVertical size={20}/>
+                    </div>
 
-            {/* Edit Fields */}
-            <div className="flex-1 space-y-6">
-               <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-                  <h3 className="font-black text-xl capitalize text-slate-900">{cat.slug}</h3>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-medium text-slate-500">Show Text Overlay?</span>
-                    <button 
-                      onClick={() => handleUpdate(cat.slug, 'show_overlay', !cat.show_overlay)}
-                      className={`relative w-11 h-6 rounded-full transition-colors duration-200 ease-in-out ${cat.show_overlay ? 'bg-slate-900' : 'bg-gray-200'}`}
-                    >
-                      <span className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform duration-200 ${cat.show_overlay ? 'translate-x-5' : 'translate-x-0'}`} />
-                    </button>
-                  </div>
-               </div>
+                    {/* IMAGE UPLOADER */}
+                    <div className="relative w-24 h-24 bg-slate-50 rounded-xl flex-shrink-0 border border-slate-200 overflow-hidden flex items-center justify-center group-hover:border-indigo-200 transition-colors">
+                        {cat.image_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={cat.image_url} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                            <ImageIcon className="text-slate-300" />
+                        )}
+                        
+                        {/* Overlay Upload Button */}
+                        <label className="absolute inset-0 bg-black/0 hover:bg-black/40 flex items-center justify-center cursor-pointer transition-colors group/img">
+                            {uploadingId === cat.id ? (
+                                <Loader2 className="animate-spin text-white" />
+                            ) : (
+                                <div className="bg-white/90 p-2 rounded-full opacity-0 group-hover/img:opacity-100 transition-opacity shadow-sm transform scale-90 group-hover/img:scale-100">
+                                    <ImageIcon size={16} className="text-slate-700"/>
+                                </div>
+                            )}
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && handleImageUpload(cat.id, e.target.files[0])} />
+                        </label>
+                    </div>
 
-               <div className="grid md:grid-cols-2 gap-5">
-                   
-                   <div className={`space-y-1.5 transition-opacity ${!cat.show_overlay ? 'opacity-50' : 'opacity-100'}`}>
-                      <label className="text-xs font-bold uppercase text-slate-500">Display Title</label>
-                      <input 
-                        value={cat.title || ''} 
-                        onChange={e => handleUpdate(cat.slug, 'title', e.target.value)}
-                        className="w-full p-3 bg-slate-50 border border-gray-200 rounded-xl font-bold text-slate-900 focus:border-orange-500 focus:bg-white outline-none transition" 
-                        placeholder="e.g. Laptops"
-                      />
-                   </div>
-                   
-                   <div className={`space-y-1.5 transition-opacity ${!cat.show_overlay ? 'opacity-50' : 'opacity-100'}`}>
-                      <label className="text-xs font-bold uppercase text-slate-500">Subtitle</label>
-                      <input 
-                        value={cat.subtitle || ''} 
-                        onChange={e => handleUpdate(cat.slug, 'subtitle', e.target.value)}
-                        className="w-full p-3 bg-slate-50 border border-gray-200 rounded-xl font-medium text-slate-700 focus:border-orange-500 focus:bg-white outline-none transition" 
-                        placeholder="e.g. Shop Collection"
-                      />
-                   </div>
-
-                   {/* Image Uploader */}
-                   <div className="md:col-span-2 space-y-2 pt-2">
-                      <label className="text-xs font-bold uppercase text-slate-500 flex items-center justify-between">
-                          Background Image
-                          {cat.image_url && (
-                            <button 
-                              onClick={() => handleUpdate(cat.slug, 'image_url', null)} 
-                              className="text-red-500 text-[10px] hover:underline flex items-center gap-1"
-                            >
-                              <Trash2 size={10} /> Clear Image
-                            </button>
-                          )}
-                      </label>
-
-                      <div className="flex items-center gap-4">
-                        <div className="relative">
-                           <input 
-                              type="file" 
-                              accept="image/*"
-                              onChange={(e) => {
-                                if (e.target.files?.[0]) handleImageUpload(cat.slug, e.target.files[0]);
-                              }}
-                              disabled={uploading === cat.slug}
-                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                           />
-                           <button className="flex items-center gap-2 bg-white border border-gray-300 text-slate-700 px-4 py-3 rounded-xl font-bold hover:bg-slate-50 hover:border-slate-400 transition w-full sm:w-auto">
-                              {uploading === cat.slug ? (
-                                <Loader2 className="animate-spin text-orange-500" size={18} />
-                              ) : (
-                                <Upload size={18} />
-                              )}
-                              {uploading === cat.slug ? 'Uploading...' : 'Upload Image'}
-                           </button>
+                    {/* FIELDS */}
+                    <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <div className="flex justify-between mb-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Category Name</label>
+                                <span className="text-[10px] font-mono text-slate-300">Slug: {cat.slug}</span>
+                            </div>
+                            {/* Name is read-only here, managed in Attributes/Products */}
+                            <div className="font-bold text-lg text-slate-800 capitalize">{cat.name}</div>
                         </div>
 
-                        <div className="text-xs text-slate-400 font-medium">
-                           {cat.image_url ? '✅ Image staged (Unsaved)' : 'No image selected'}
+                        <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 block">Subtitle / Marketing Copy</label>
+                            <input 
+                                className="w-full bg-slate-50 border border-transparent focus:bg-white focus:border-indigo-500 rounded-lg px-3 py-2 text-sm font-medium outline-none transition-all placeholder:text-slate-300"
+                                placeholder="e.g. 'Summer Collection 2024'"
+                                value={cat.subtitle || ''}
+                                onChange={(e) => updateLocalState(cat.id, { subtitle: e.target.value })}
+                            />
                         </div>
-                      </div>
-                   </div>
-               </div>
-            </div>
-          </div>
-        ))}
+                    </div>
+
+                    {/* OPTIONS */}
+                    <div className="flex items-center gap-4 border-l border-slate-100 pl-6 h-full">
+                        <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sort</label>
+                            <input 
+                                type="number" 
+                                className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-center font-bold text-sm outline-none focus:border-indigo-500"
+                                value={cat.sort_order || 0}
+                                onChange={(e) => updateLocalState(cat.id, { sort_order: parseInt(e.target.value) || 0 })}
+                            />
+                        </div>
+
+                        <button 
+                            onClick={() => updateLocalState(cat.id, { show_overlay: !cat.show_overlay })}
+                            className={`p-3 rounded-xl transition-all ${cat.show_overlay !== false ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-50 text-slate-400'}`}
+                            title={cat.show_overlay !== false ? "Overlay Visible" : "Overlay Hidden"}
+                        >
+                            {cat.show_overlay !== false ? <Eye size={20} /> : <EyeOff size={20} />}
+                        </button>
+                    </div>
+
+                </div>
+            ))
+        )}
+      </div>
+
+      {/* Floating Save Button */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <button 
+          onClick={handleSave} 
+          disabled={isPending || categories.length === 0}
+          className="bg-slate-900 text-white px-8 py-4 rounded-full font-bold shadow-2xl hover:scale-105 active:scale-95 transition-all flex items-center gap-3 disabled:opacity-70 disabled:scale-100"
+        >
+           {isPending ? <Loader2 className="animate-spin" /> : <Save size={20} />}
+           Save Layouts
+        </button>
       </div>
     </div>
   );

@@ -48,12 +48,13 @@ export default async function ProductPage({ params }: Props) {
 
   if (!store) return notFound();
 
-  // B. FETCH MAIN PRODUCT (With Variants)
+  // B. FETCH MAIN PRODUCT (With Variants AND Category)
   const { data: productRaw } = await supabase
     .from('products')
     .select(`
       *,
-      variants:product_variants(*)
+      variants:product_variants(*),
+      categories(name, slug)
     `)
     .eq('store_id', store.id)
     .eq('slug', slug)
@@ -61,19 +62,24 @@ export default async function ProductPage({ params }: Props) {
 
   if (!productRaw) return notFound();
 
-  // Cast safely because Supabase TS types don't always infer joined arrays perfectly
   const product = productRaw as unknown as ProductWithRelations;
 
   // C. PARALLEL FETCH (Extras)
   const [related, reviews, view360] = await Promise.all([
-    // 1. Related Products
-    supabase
-      .from('products')
-      .select('*')
-      .eq('store_id', store.id)
-      .eq('category', product.category)
-      .neq('id', product.id)
-      .limit(4),
+    // 1. Related Products (✅ FIX: Only run if category_id exists)
+    product.category_id 
+      ? supabase
+          .from('products')
+          .select(`
+            *,
+            variants:product_variants(*),
+            categories(name, slug)
+          `)
+          .eq('store_id', store.id)
+          .eq('category_id', product.category_id) // TS is happy now
+          .neq('id', product.id)
+          .limit(4)
+      : Promise.resolve({ data: [] }), // Fallback for uncategorized items
     
     // 2. Verified Reviews
     supabase
@@ -94,7 +100,8 @@ export default async function ProductPage({ params }: Props) {
     <ProductClient 
       storeSlug={site}
       product={product} 
-      relatedItems={(related.data as ProductRow[]) || []}
+      // Cast related items to the correct joined type
+      relatedItems={(related.data as unknown as ProductWithRelations[]) || []}
       reviews={reviews.data || []}
       frames360={view360.data?.frame_urls || null}
     />

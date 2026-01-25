@@ -5,17 +5,19 @@ import { getActiveStore } from "@/lib/services/admin-auth";
 import { revalidatePath } from 'next/cache';
 import { Database } from '@/lib/database.types';
 import { redirect } from 'next/navigation';
+
 // Helper Types
-type CategoryMetaRow = Database['public']['Tables']['category_metadata']['Row'];
+type CategorySectionInsert = Database['public']['Tables']['category_sections']['Insert'];
+type ContentBlockUpdate = Database['public']['Tables']['content_blocks']['Update'];
+type BannerInsert = Database['public']['Tables']['banners']['Insert'];
+
+// ✅ 1. UPDATE ATTRIBUTE TYPE (Matches new schema)
 type AttributeData = {
-  category: string;
+  category_id: string; // UUID
   key: string;
   value: string;
   sort_order?: number;
 };
-type CategorySectionInsert = Database['public']['Tables']['category_sections']['Insert'];
-type ContentBlockUpdate = Database['public']['Tables']['content_blocks']['Update'];
-type BannerInsert = Database['public']['Tables']['banners']['Insert'];
 
 // Helper to enforce security
 async function getStoreOrThrow() {
@@ -36,7 +38,7 @@ export async function updateOrderStatus(orderId: string, newStatus: string) {
     .from('orders')
     .update({ status: newStatus })
     .eq('id', orderId)
-    .eq('store_id', store.id); // 🔒 Security Check
+    .eq('store_id', store.id); 
 
   if (error) throw new Error('Failed to update order status');
 
@@ -52,7 +54,7 @@ export async function deleteOrder(orderId: string) {
     .from('orders')
     .delete()
     .eq('id', orderId)
-    .eq('store_id', store.id); // 🔒 Security Check
+    .eq('store_id', store.id); 
 
   if (error) throw new Error('Failed to delete order');
 
@@ -66,14 +68,14 @@ export async function deleteOrder(orderId: string) {
 
 export async function updateProductStock(variantId: string, newStock: number) {
   const supabase = await createClient();
-  
+   
   const { error } = await supabase
     .from('product_variants')
     .update({ stock: newStock })
     .eq('id', variantId);
 
   if (error) throw new Error('Failed to update stock');
-  
+   
   revalidatePath('/admin/inventory');
   return { success: true };
 }
@@ -81,19 +83,19 @@ export async function updateProductStock(variantId: string, newStock: number) {
 export async function toggleProductActive(productId: string, isActive: boolean) {
   const store = await getStoreOrThrow();
   const supabase = await createClient();
-  
+   
   await supabase
     .from('products')
     .update({ is_active: isActive })
     .eq('id', productId)
-    .eq('store_id', store.id); // 🔒 Security Check
+    .eq('store_id', store.id); 
 
   revalidatePath('/admin/inventory');
   return { success: true };
 }
 
 // ==========================================
-// 3. SETTINGS ACTIONS (Modern JSONB)
+// 3. SETTINGS ACTIONS
 // ==========================================
 
 export async function getStoreSettings() {
@@ -106,7 +108,6 @@ export async function updateStoreSettings(newSettings: Record<string, any>) {
   const store = await getStoreOrThrow();
   const supabase = await createClient();
 
-  // Merge existing settings with new ones to prevent data loss
   const currentSettings = (store.settings as Record<string, any>) || {};
   const mergedSettings = { ...currentSettings, ...newSettings };
 
@@ -114,7 +115,7 @@ export async function updateStoreSettings(newSettings: Record<string, any>) {
     .from('stores')
     .update({ 
       settings: mergedSettings,
-      name: newSettings.site_name || store.name // Sync name if changed
+      name: newSettings.site_name || store.name 
     })
     .eq('id', store.id);
 
@@ -124,7 +125,6 @@ export async function updateStoreSettings(newSettings: Record<string, any>) {
   return { success: true };
 }
 
-// Legacy support
 export async function updateSiteSetting(key: string, value: string) {
     return updateStoreSettings({ [key]: value });
 }
@@ -136,12 +136,12 @@ export async function updateSiteSetting(key: string, value: string) {
 export async function deleteBanner(id: string) {
   const store = await getStoreOrThrow();
   const supabase = await createClient();
-  
+   
   await supabase
     .from('banners')
     .delete()
     .eq('id', id)
-    .eq('store_id', store.id); // 🔒 Security Check
+    .eq('store_id', store.id); 
 
   revalidatePath('/admin/banners');
   return { success: true };
@@ -153,7 +153,7 @@ export async function createBanner(data: BannerInsert) {
 
   const { error } = await supabase.from('banners').insert({
     ...data,
-    store_id: store.id // 🔒 Enforce Ownership
+    store_id: store.id 
   });
 
   if (error) throw new Error(error.message);
@@ -164,30 +164,34 @@ export async function createBanner(data: BannerInsert) {
 export async function toggleBannerStatus(id: string, isActive: boolean) {
   const store = await getStoreOrThrow();
   const supabase = await createClient();
-  
+   
   await supabase
     .from('banners')
     .update({ is_active: isActive })
     .eq('id', id)
-    .eq('store_id', store.id); // 🔒 Security Check
+    .eq('store_id', store.id); 
 
   revalidatePath('/admin/banners');
   return { success: true };
 }
 
 // ==========================================
-// 5. ATTRIBUTE ACTIONS
+// 5. ATTRIBUTE ACTIONS (Refactored)
 // ==========================================
 
 export async function createAttribute(data: AttributeData) {
   const store = await getStoreOrThrow();
   const supabase = await createClient();
-  
+   
+  // ✅ Insert using category_id
   const { error } = await supabase
     .from('attribute_options')
     .insert({
-        ...data,
-        store_id: store.id // 🔒 Enforce Ownership
+        store_id: store.id,
+        category_id: data.category_id, // New ID column
+        key: data.key,
+        value: data.value,
+        sort_order: data.sort_order || 0
     });
 
   if (error) throw new Error(error.message);
@@ -198,12 +202,18 @@ export async function createAttribute(data: AttributeData) {
 export async function updateAttribute(id: string, data: AttributeData) {
   const store = await getStoreOrThrow();
   const supabase = await createClient();
-  
+   
+  // ✅ Update using category_id
   const { error } = await supabase
     .from('attribute_options')
-    .update(data)
+    .update({
+       category_id: data.category_id,
+       key: data.key,
+       value: data.value,
+       sort_order: data.sort_order
+    })
     .eq('id', id)
-    .eq('store_id', store.id); // 🔒 Security Check
+    .eq('store_id', store.id); 
 
   if (error) throw new Error(error.message);
   revalidatePath('/admin/attributes');
@@ -213,12 +223,12 @@ export async function updateAttribute(id: string, data: AttributeData) {
 export async function deleteAttribute(id: string) {
   const store = await getStoreOrThrow();
   const supabase = await createClient();
-  
+   
   const { error } = await supabase
     .from('attribute_options')
     .delete()
     .eq('id', id)
-    .eq('store_id', store.id); // 🔒 Security Check
+    .eq('store_id', store.id); 
 
   if (error) throw new Error(error.message);
   revalidatePath('/admin/attributes');
@@ -226,31 +236,37 @@ export async function deleteAttribute(id: string) {
 }
 
 // ==========================================
-// 6. CATEGORY METADATA ACTIONS (Layouts)
+// 6. CATEGORY METADATA ACTIONS (Now updates 'categories')
 // ==========================================
 
-export async function updateCategoryMeta(data: CategoryMetaRow[]) {
+export async function updateCategoryMeta(data: any[]) {
   const store = await getStoreOrThrow();
   const supabase = await createClient();
-  
-  // Ensure every row belongs to this store
-  const safeData = data.map(d => ({
-    ...d,
-    store_id: store.id
-  }));
+   
+  // ✅ Loop update: Since 'categories' is the master table now
+  // We use slug to identify rows, as per legacy logic
+  for (const row of data) {
+     if (!row.slug) continue;
 
-  const { error } = await supabase
-    .from('category_metadata')
-    .upsert(safeData);
-
-  if (error) throw new Error(error.message);
-  
+     await supabase
+       .from('categories') // Update MASTER table
+       .update({
+          // Map legacy fields if necessary
+          subtitle: row.subtitle,
+          image_url: row.image_url,
+          show_overlay: row.show_overlay,
+          sort_order: row.sort_order
+       })
+       .eq('store_id', store.id)
+       .eq('slug', row.slug);
+  }
+   
   revalidatePath('/admin/layouts');
   return { success: true };
 }
 
 // ==========================================
-// 7. CATEGORY SECTION ACTIONS (The Rows)
+// 7. CATEGORY SECTION ACTIONS
 // ==========================================
 
 export async function saveCategorySection(data: CategorySectionInsert) {
@@ -261,7 +277,7 @@ export async function saveCategorySection(data: CategorySectionInsert) {
     .from('category_sections')
     .upsert({
         ...data,
-        store_id: store.id // 🔒 Enforce Ownership
+        store_id: store.id 
     });
 
   if (error) throw new Error(error.message);
@@ -278,7 +294,7 @@ export async function deleteCategorySection(id: string) {
     .from('category_sections')
     .delete()
     .eq('id', id)
-    .eq('store_id', store.id); // 🔒 Security Check
+    .eq('store_id', store.id); 
 
   if (error) throw new Error(error.message);
 
@@ -287,7 +303,7 @@ export async function deleteCategorySection(id: string) {
 }
 
 // ==========================================
-// 8. CONTENT BLOCK ACTIONS (Home Grid)
+// 8. CONTENT BLOCK ACTIONS
 // ==========================================
 
 export async function updateContentBlock(id: string, updates: ContentBlockUpdate) {
@@ -298,15 +314,14 @@ export async function updateContentBlock(id: string, updates: ContentBlockUpdate
     .from('content_blocks')
     .update(updates)
     .eq('id', id)
-    .eq('store_id', store.id); // 🔒 Security Check
+    .eq('store_id', store.id); 
 
   if (error) throw new Error(error.message);
 
-  revalidatePath('/'); // ⚡ Refresh the homepage immediately
+  revalidatePath('/'); 
   return { success: true };
 }
 
-// ✅ NEW: Create a new block (for adding carousel items)
 export async function createContentBlock(data: { 
   section_key: string; 
   block_key: string; 
@@ -315,13 +330,13 @@ export async function createContentBlock(data: {
   icon_key?: string; 
   meta_info?: any 
 }) {
-  const store = await getStoreOrThrow(); // 🔒 Get current store
+  const store = await getStoreOrThrow(); 
   const supabase = await createClient();
-  
+   
   const { data: newBlock, error } = await supabase
     .from('content_blocks')
     .insert([{
-      store_id: store.id, // 🔒 IMPORTANT: Link to store
+      store_id: store.id, 
       section_key: data.section_key,
       block_key: data.block_key, 
       title: data.title,
@@ -333,25 +348,24 @@ export async function createContentBlock(data: {
     .single();
 
   if (error) throw new Error(error.message);
-  
+   
   revalidatePath('/admin/grid'); 
   revalidatePath('/'); 
   return newBlock;
 }
 
-// ✅ NEW: Delete a block
 export async function deleteContentBlock(id: string) {
   const store = await getStoreOrThrow();
   const supabase = await createClient();
-  
+   
   const { error } = await supabase
     .from('content_blocks')
     .delete()
     .eq('id', id)
-    .eq('store_id', store.id); // 🔒 Security Check
+    .eq('store_id', store.id); 
 
   if (error) throw new Error(error.message);
-  
+   
   revalidatePath('/admin/grid');
   revalidatePath('/');
 }
@@ -370,8 +384,7 @@ export interface DashboardStats {
 
 export async function getDashboardStats(): Promise<DashboardStats> {
   const supabase = await createClient();
-  
-  // 1. Security: Get the Store ID for the current user
+   
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/admin/login');
 
@@ -383,28 +396,23 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
   if (!store) throw new Error("Store not found");
 
-  // 2. Parallel Fetching for Speed ⚡
   const [revenueRes, ordersRes, inventoryRes, recentRes] = await Promise.all([
-    // A. Total Revenue
     supabase
       .from('orders')
       .select('total_amount.sum()')
       .eq('store_id', store.id)
       .neq('status', 'cancelled'),
 
-    // B. Total Orders
     supabase
       .from('orders')
       .select('*', { count: 'exact', head: true })
       .eq('store_id', store.id),
 
-    // C. Low Stock
     supabase
       .from('product_variants')
       .select('*', { count: 'exact', head: true })
       .lt('stock', 5),
 
-    // D. Recent Orders
     supabase
       .from('orders')
       .select('id, customer_name, total_amount, status, created_at')

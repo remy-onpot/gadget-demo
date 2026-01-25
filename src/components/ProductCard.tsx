@@ -1,26 +1,25 @@
 import React from 'react';
 import { Database } from '@/lib/database.types'; 
 import { slugify } from '@/lib/utils';
-import { 
-  ArrowRight, 
-  Tag, 
-  Sparkles,
-  Zap
-} from 'lucide-react';
+import { ArrowRight, Tag, Sparkles, Zap } from 'lucide-react';
 import Link from 'next/link';
 
-// 1. Use the correct Type from your DB Schema
-type Product = Database['public']['Tables']['products']['Row'];
+// ✅ 1. Define Extended Type with Join
+type ProductWithCategory = Database['public']['Tables']['products']['Row'] & {
+  categories?: { name: string; slug: string } | null;
+};
 
-export const ProductCard = ({ product }: { product: Product }) => {
+export const ProductCard = ({ product }: { product: ProductWithCategory }) => {
 
-  // 2. DYNAMIC ACCENT COLOR
+  // ✅ 2. Safe Access to Category Name
+  const categoryName = product.categories?.name || 'Uncategorized';
+
   const getCategoryColor = (cat: string) => {
     const colors = ['text-blue-500', 'text-orange-500', 'text-purple-500', 'text-green-500', 'text-pink-500'];
     return colors[cat.length % colors.length];
   };
 
-  const accentColorClass = getCategoryColor(product.category || '');
+  const accentColorClass = getCategoryColor(categoryName);
 
   return (
     <Link href={`/product/${slugify(product.name)}`} className="group block h-full">
@@ -45,7 +44,6 @@ export const ProductCard = ({ product }: { product: Product }) => {
              </div>
           )}
           
-          {/* Badges */}
           <div className="absolute top-2 left-2 flex flex-col gap-1">
             {product.is_featured && (
               <span className="bg-orange-500 text-white text-[9px] md:text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider shadow-sm flex items-center gap-1">
@@ -62,7 +60,8 @@ export const ProductCard = ({ product }: { product: Product }) => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 uppercase tracking-wider">
                <Zap size={14} className={accentColorClass} fill="currentColor" fillOpacity={0.2} />
-               {product.category}
+               {/* ✅ Display Joined Name */}
+               {categoryName}
             </div>
             {product.brand && (
               <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
@@ -71,13 +70,10 @@ export const ProductCard = ({ product }: { product: Product }) => {
             )}
           </div>
 
-          {/* Title */}
           <h3 className="font-bold text-slate-900 leading-snug text-sm md:text-base line-clamp-2 min-h-[2.5rem] group-hover:text-[#0A2540] transition-colors">
             {product.name}
           </h3>
 
-          {/* 3. REPLACED SPECS BAR with Description Snippet */}
-          {/* Since 'specs' are on variants now, we show the description here instead */}
           <div className="bg-slate-50 group-hover:bg-white group-hover:shadow-sm border border-transparent group-hover:border-gray-100 transition-all rounded-lg px-2.5 py-2 text-xs font-medium text-slate-500 flex items-center gap-2">
             <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${accentColorClass.replace('text-', 'bg-')}`} />
             <span className="truncate">{product.description || 'Premium Quality'}</span>
@@ -86,11 +82,10 @@ export const ProductCard = ({ product }: { product: Product }) => {
           <div className="mt-auto pt-3 flex items-end justify-between border-t border-gray-50/50">
             <div>
               <div className="flex items-baseline gap-0.5">
-                 <span className="text-xs font-medium text-slate-400 mr-1">from</span>
-                 <span className="text-lg md:text-xl font-black text-slate-900">
-                   {/* Correct column name from DB: base_price */}
-                   ₵{(product.base_price || 0).toLocaleString()}
-                 </span>
+                  <span className="text-xs font-medium text-slate-400 mr-1">from</span>
+                  <span className="text-lg md:text-xl font-black text-slate-900">
+                    ₵{(product.base_price || 0).toLocaleString()}
+                  </span>
               </div>
             </div>
 

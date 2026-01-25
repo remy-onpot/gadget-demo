@@ -15,8 +15,11 @@ import { SecurityModal } from '@/components/admin/SecurityModal';
 type ProductRow = Database['public']['Tables']['products']['Row'];
 type VariantRow = Database['public']['Tables']['product_variants']['Row'];
 
+// ✅ 1. UPDATE TYPE DEFINITION
+// We add the 'categories' object which comes from the Join
 type InventoryItem = ProductRow & {
   product_variants: VariantRow[]; 
+  categories: { id: string; name: string } | null;
 };
 
 export default function InventoryPage() {
@@ -27,7 +30,8 @@ export default function InventoryPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<InventoryItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-const [deleteTarget, setDeleteTarget] = useState<{ id: string, name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string, name: string } | null>(null);
+
   useEffect(() => {
     if (!storeId) return;
     fetchInventory();
@@ -37,21 +41,22 @@ const [deleteTarget, setDeleteTarget] = useState<{ id: string, name: string } | 
     if (!storeId) return;
     
     setLoading(true);
+    // ✅ 2. JOIN THE CATEGORIES TABLE
     const { data, error } = await supabase
       .from('products')
-      .select('*, product_variants(*)') 
+      .select('*, product_variants(*), categories(id, name)') 
       .eq('store_id', storeId) 
       .order('created_at', { ascending: false });
 
     if (error) {
       toast.error("Failed to load inventory");
     } else if (data) {
-        setProducts(data as unknown as InventoryItem[]);
+        // @ts-ignore - Safe cast for the joined data
+        setProducts(data as InventoryItem[]);
     }
     setLoading(false);
   };
   
-
   // 1. Initial Click just opens the modal
   const requestDelete = (id: string, name: string) => {
     setDeleteTarget({ id, name });
@@ -153,7 +158,14 @@ const [deleteTarget, setDeleteTarget] = useState<{ id: string, name: string } | 
                                </div>
                              </div>
                            </td>
-                           <td className="px-6 py-4"><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-bold">{product.category}</span></td>
+                           
+                           {/* ✅ 3. RENDER JOINED CATEGORY NAME */}
+                           <td className="px-6 py-4">
+                               <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-bold capitalize">
+                                   {product.categories?.name || 'Uncategorized'}
+                               </span>
+                           </td>
+
                            <td className="px-6 py-4">
                              {isOut ? <span className="text-red-600 font-bold text-xs flex items-center gap-1"><AlertTriangle size={12}/> OOS</span> 
                              : isLow ? <span className="text-orange-600 font-bold text-xs">Low ({totalStock})</span>
@@ -161,7 +173,6 @@ const [deleteTarget, setDeleteTarget] = useState<{ id: string, name: string } | 
                            </td>
                            <td className="px-6 py-4 font-mono font-bold text-slate-700">₵{(product.base_price || 0).toLocaleString()}</td>
                            
-                           {/* ✅ ACTIONS COLUMN */}
                            <td className="px-6 py-4 text-right">
                              <div className="flex items-center justify-end gap-2">
                                 <button 
@@ -215,7 +226,6 @@ const [deleteTarget, setDeleteTarget] = useState<{ id: string, name: string } | 
          </div>
       )}
 
-      {/* ✅ SECURITY MODAL */}
       <SecurityModal 
          isOpen={!!deleteTarget}
          onClose={() => setDeleteTarget(null)}

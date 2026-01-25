@@ -7,29 +7,25 @@ export async function getGlobalData(storeId: string) {
     return { settings: {}, categories: [] };
   }
 
-  // 1. Fetch Site Settings (Now stored in the 'stores' table JSON column)
+  // 1. Fetch Site Settings
   const { data: storeData } = await supabase
     .from('stores')
     .select('settings')
     .eq('id', storeId)
     .single();
 
-  // Safely cast the JSON settings to the expected Record format
   const settings = (storeData?.settings as Record<string, string>) || {};
 
-  // 2. Fetch Active Categories (Dynamic Navigation)
-  // ✅ SECURITY UPDATE: We now filter by 'store_id' so we don't leak 
-  // categories from other stores.
-  const { data: products } = await supabase
-    .from('products')
-    .select('category')
+  // 2. Fetch Categories (Dynamic Navigation)
+  // ✅ FIX: Query the new 'categories' master table directly
+  const { data: categoriesData } = await supabase
+    .from('categories')
+    .select('name')
     .eq('store_id', storeId)
-    .eq('is_active', true);
+    .order('name', { ascending: true });
 
-  // Get unique categories and sort them
-  const categories = Array.from(new Set(
-    products?.map(p => p.category?.toLowerCase()).filter(Boolean) || []
-  )).sort();
+  // Map to a simple string array for the navigation menu
+  const categories = categoriesData?.map(c => c.name) || [];
 
   return { settings, categories };
 }

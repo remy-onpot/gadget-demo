@@ -28,19 +28,28 @@ export const CategoryLayoutManager = () => {
 
   const [isPending, startTransition] = useTransition();
 
-  // 1. FETCH CATEGORIES
-  useEffect(() => {
-    const fetchCats = async () => {
-       const { data } = await supabase.from('products').select('category');
-       if (data && data.length > 0) {
-           const unique = Array.from(new Set(data.map(p => p.category.toLowerCase()))).filter(Boolean);
-           const sorted = unique.sort();
-           setCategories(sorted);
-           if (sorted.length > 0) setActiveCategory(sorted[0]);
-       }
-    };
-    fetchCats();
-  }, []);
+ // 1. FETCH CATEGORIES
+useEffect(() => {
+  const fetchCats = async () => {
+     // ✅ FIX: Query the 'categories' table directly
+     // This is faster than scanning products and deduping manually
+     const { data } = await supabase
+       .from('categories')
+       .select('name')
+       .order('name', { ascending: true });
+     
+     if (data && data.length > 0) {
+         // Simply map the names, no need for Set/Unique logic anymore
+         const catNames = data.map(c => c.name);
+         
+         setCategories(catNames);
+         
+         // Set default active tab
+         if (catNames.length > 0) setActiveCategory(catNames[0]);
+     }
+  };
+  fetchCats();
+}, []);
 
   // 2. FETCH SECTIONS
   useEffect(() => {

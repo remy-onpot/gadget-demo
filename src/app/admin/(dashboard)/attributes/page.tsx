@@ -4,26 +4,29 @@ import React, { useState, useEffect, useTransition, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAdminData } from '@/hooks/useAdminData'; 
 import { createAttribute, updateAttribute, deleteAttribute } from '@/app/admin/(dashboard)/actions';
-import { getCategories, createCategory } from '@/actions/category-actions'; // ✅ Import Central Category Actions
 import { Database } from '@/lib/database.types'; 
-import { Plus, Trash2, Save, X, Loader2, Tags, Edit2, List, HelpCircle } from 'lucide-react';
+import { Plus, Trash2, Save, X, Loader2, Tags, Edit2, List, HelpCircle, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 
-type AttributeOption = Database['public']['Tables']['attribute_options']['Row'];
+// ✅ 1. Define Type with Join
+// We extend the DB row to include the joined 'categories' table data
+type AttributeOptionWithJoin = Database['public']['Tables']['attribute_options']['Row'] & {
+  categories: { name: string } | null; 
+};
 
 export default function AttributesPage() {
   const { storeId, loading: authLoading } = useAdminData();
-  const [attributes, setAttributes] = useState<AttributeOption[]>([]);
-  const [categoryList, setCategoryList] = useState<string[]>([]); // ✅ Central List
+  const [attributes, setAttributes] = useState<AttributeOptionWithJoin[]>([]);
+  const [categoryList, setCategoryList] = useState<{id: string, name: string}[]>([]); // ✅ List of objects
   const [loading, setLoading] = useState(true);
   
   // Editor State
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
-  // Form Data (Internal keys stay the same for DB, but UI changes)
+  // ✅ 2. Form Data uses 'category_id' now
   const [formData, setFormData] = useState({
-    category: '',
+    category_id: '', 
     key: '',
     value: '',
     sort_order: 0
@@ -31,24 +34,34 @@ export default function AttributesPage() {
 
   const [isPending, startTransition] = useTransition();
   
-  // 1. FETCH DATA
+  // 3. FETCH DATA
   const fetchData = async () => {
     if (!storeId) return;
     setLoading(true);
     
-    // A. Fetch Attributes
-    const { data: attrData } = await supabase
+    // A. Fetch Attributes with JOIN to get Category Name
+    const { data: attrData, error } = await supabase
       .from('attribute_options')
-      .select('*')
+      .select('*, categories(name)') // 👈 The Magic Join
       .eq('store_id', storeId)
-      .order('category', { ascending: true })
       .order('sort_order', { ascending: true });
         
-    if (attrData) setAttributes(attrData);
+    if (error) {
+       console.error(error);
+       toast.error("Failed to load attributes");
+    } else if (attrData) {
+       // @ts-ignore - Supabase types sometimes struggle with joins, safe cast here
+       setAttributes(attrData as AttributeOptionWithJoin[]);
+    }
 
-    // B. Fetch Central Categories (For Dropdown)
-    const cats = await getCategories(storeId);
-    if (cats) setCategoryList(cats.map(c => c.name));
+    // B. Fetch Categories for Dropdown
+    const { data: catData } = await supabase
+      .from('categories')
+      .select('id, name')
+      .eq('store_id', storeId)
+      .order('name');
+      
+    if (catData) setCategoryList(catData);
 
     setLoading(false);
   };
@@ -57,38 +70,40 @@ export default function AttributesPage() {
     if (storeId) fetchData();
   }, [storeId]);
   
-  // 2. SUGGESTIONS (Memoized)
+  // 4. SUGGESTIONS (For Attribute Name auto-complete)
   const suggestions = useMemo(() => {
-    // We prioritize the Central Category List, but fallback to existing attributes if needed
-    const cats = Array.from(new Set([...categoryList, ...attributes.map(a => a.category)])).sort();
     const keys = Array.from(new Set(attributes.map(a => a.key))).sort();
-    return { cats, keys };
-  }, [attributes, categoryList]);
+    return { keys };
+  }, [attributes]);
 
   const handleSave = () => {
-    if (!formData.category) return toast.error("Product Category is required");
+    if (!formData.category_id) return toast.error("Product Category is required");
     if (!formData.key) return toast.error("Attribute Name is required");
     if (!formData.value) return toast.error("Option Value is required");
     
     startTransition(async () => {
         try {
-            // ✅ AUTO-CREATE CATEGORY if it's new
-            if (storeId && !categoryList.includes(formData.category)) {
-                await createCategory(formData.category, storeId);
-            }
+            const payload = {
+                store_id: storeId,
+                category_id: formData.category_id,
+                key: formData.key,
+                value: formData.value,
+                sort_order: formData.sort_order
+            };
 
             const promise = editingId 
-               ? updateAttribute(editingId, formData) 
-               : createAttribute(formData);
+               ? updateAttribute(editingId, payload) 
+               : createAttribute(payload);
 
             await promise;
             
             toast.success(editingId ? "Option updated" : "Option created");
             setIsEditing(false);
             setEditingId(null);
+            
             // Smart Reset: Keep Category and Key, just clear Value for rapid entry
             setFormData(prev => ({ ...prev, value: '', sort_order: prev.sort_order + 10 })); 
-            fetchData(); // Refresh everything
+            fetchData(); 
 
         } catch (e: any) {
             toast.error(`Failed: ${e.message}`);
@@ -108,23 +123,23 @@ export default function AttributesPage() {
     });
   };
 
-  const openEditor = (attr?: AttributeOption) => {
+  const openEditor = (attr?: AttributeOptionWithJoin) => {
     if (attr) {
       setEditingId(attr.id);
       setFormData({
-         category: attr.category,
+         category_id: attr.category_id || '',
          key: attr.key,
          value: attr.value,
          sort_order: attr.sort_order || 0
       });
     } else {
       setEditingId(null);
-      // Smart default: use most recent category
-      const lastCat = attributes.length > 0 ? attributes[attributes.length - 1].category : '';
+      // Smart default: use most recent category ID used
+      const lastCatId = attributes.length > 0 ? attributes[attributes.length - 1].category_id || '' : '';
       const lastKey = attributes.length > 0 ? attributes[attributes.length - 1].key : '';
       
       setFormData({ 
-         category: lastCat, 
+         category_id: lastCatId, 
          key: lastKey, 
          value: '', 
          sort_order: 0 
@@ -133,11 +148,15 @@ export default function AttributesPage() {
     setIsEditing(true);
   };
 
+  // ✅ 5. GROUPING LOGIC (Using the joined name)
   const grouped = attributes.reduce((acc, curr) => {
-     if (!acc[curr.category]) acc[curr.category] = [];
-     acc[curr.category].push(curr);
+     // Handle cases where category might be null (deleted) or joined
+     const catName = curr.categories?.name || 'Uncategorized';
+     
+     if (!acc[catName]) acc[catName] = [];
+     acc[catName].push(curr);
      return acc;
-  }, {} as Record<string, AttributeOption[]>);
+  }, {} as Record<string, AttributeOptionWithJoin[]>);
 
   if (authLoading || (loading && attributes.length === 0)) {
      return <div className="min-h-[60vh] flex items-center justify-center"><Loader2 className="animate-spin text-slate-300" size={32}/></div>;
@@ -164,10 +183,10 @@ export default function AttributesPage() {
 
       {/* ATTRIBUTE GRID */}
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-         {Object.entries(grouped).map(([category, items]) => (
-            <div key={category} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+         {Object.entries(grouped).map(([categoryName, items]) => (
+            <div key={categoryName} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                <div className="bg-slate-50 px-5 py-4 border-b border-gray-200 flex justify-between items-center">
-                  <span className="font-black text-slate-700 uppercase tracking-wider text-sm">{category}</span>
+                  <span className="font-black text-slate-700 uppercase tracking-wider text-sm">{categoryName}</span>
                   <span className="text-xs font-bold bg-white border border-gray-200 px-2 py-1 rounded text-slate-500">{items.length} options</span>
                </div>
                <div className="divide-y divide-gray-100 max-h-[300px] overflow-y-auto">
@@ -216,22 +235,25 @@ export default function AttributesPage() {
              </div>
              
              <div className="p-6 space-y-5">
-                 {/* 1. CATEGORY */}
+                 {/* 1. CATEGORY SELECTOR (ID BASED) */}
                  <div>
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
                        Product Category <HelpCircle size={12} className="text-slate-300"/>
                     </label>
-                    <input 
-                      list="category-suggestions"
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-indigo-500 focus:bg-white transition"
-                      placeholder="e.g. Shoes, T-Shirts"
-                      value={formData.category}
-                      onChange={e => setFormData({...formData, category: e.target.value})}
-                      autoFocus={!editingId}
-                    />
-                    <datalist id="category-suggestions">
-                       {suggestions.cats.map(c => <option key={c} value={c} />)}
-                    </datalist>
+                    <div className="relative">
+                        <select
+                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-indigo-500 focus:bg-white transition appearance-none"
+                            value={formData.category_id}
+                            onChange={e => setFormData({...formData, category_id: e.target.value})}
+                            autoFocus={!editingId}
+                        >
+                            <option value="">Select Category...</option>
+                            {categoryList.map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-3.5 text-slate-400 pointer-events-none" size={16}/>
+                    </div>
                     <p className="text-[10px] text-slate-400 mt-1 font-medium">Group this option under a specific product type.</p>
                  </div>
 

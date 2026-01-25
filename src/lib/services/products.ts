@@ -3,29 +3,39 @@ import { cacheService } from '@/lib/cache-wrapper';
 import { Product, CategorySection, Category, FilterRule } from '@/lib/types';
 import { Database } from '@/lib/database.types';
 import { matchesRules } from '@/lib/filter-engine';
-import { slugify } from '@/lib/utils'; // ✅ Import slugify
+import { slugify } from '@/lib/utils'; 
 
-// 0. AUTO-GENERATED DB TYPES
+// 0. DB TYPES
 type ProductRow = Database['public']['Tables']['products']['Row'];
 type VariantRow = Database['public']['Tables']['product_variants']['Row'];
-type CategoryMetaRow = Database['public']['Tables']['category_metadata']['Row'];
+type CategoryRow = Database['public']['Tables']['categories']['Row']; // ✅ New Master Table
 type SectionRow = Database['public']['Tables']['category_sections']['Row'];
 
-// 1. QUERY RETURN SHAPES
-type ProductWithFullVariants = ProductRow & { variants: VariantRow[]; };
-type ProductWithPrice = ProductRow & { variants: Pick<VariantRow, 'price'>[]; };
+// 1. QUERY RETURN SHAPES (With Joins)
+type ProductWithRelations = ProductRow & { 
+  variants: VariantRow[]; 
+  categories: CategoryRow | null; // ✅ Joined Data
+};
+
+type ProductWithPrice = ProductRow & { 
+  variants: Pick<VariantRow, 'price'>[]; 
+  categories: CategoryRow | null; // ✅ Joined Data
+};
 
 // 2. MAPPERS
-const mapToProduct = (raw: ProductWithFullVariants): Product => {
+const mapToProduct = (raw: ProductWithRelations): Product => {
   const prices = raw.variants?.map((v) => v.price) || [];
   const minPrice = prices.length > 0 ? Math.min(...prices) : (raw.base_price || 0);
+
+  // ✅ Extract Name from Join
+  const categoryName = raw.categories?.name || 'Uncategorized';
 
   return {
     id: raw.id,
     name: raw.name,
     slug: raw.slug,
     brand: raw.brand || 'Generic',
-    category: raw.category as Category,
+    category: categoryName as Category, // Cast to maintain compatibility
     description: raw.description || undefined,
     price: minPrice,
     originalPrice: raw.base_price || undefined,
@@ -48,13 +58,15 @@ const mapToProduct = (raw: ProductWithFullVariants): Product => {
 const mapToListProduct = (raw: ProductWithPrice): Product => {
   const prices = raw.variants?.map((v) => v.price) || [];
   const minPrice = prices.length > 0 ? Math.min(...prices) : (raw.base_price || 0);
+  
+  const categoryName = raw.categories?.name || 'Uncategorized';
 
   return {
     id: raw.id,
     name: raw.name,
     slug: raw.slug,
     brand: raw.brand || 'Generic',
-    category: raw.category as Category,
+    category: categoryName as Category,
     description: raw.description || undefined,
     price: minPrice,
     originalPrice: raw.base_price || undefined,
@@ -67,20 +79,21 @@ const mapToListProduct = (raw: ProductWithPrice): Product => {
 };
 
 // ==========================================
-// 1. FEATURED PRODUCTS (Full Detail)
+// 1. FEATURED PRODUCTS 
 // ==========================================
 const getFeaturedInternal = async (storeId: string): Promise<Product[]> => {
   const supabase = createStaticClient();
   const { data } = await supabase
     .from('products')
-    .select('*, variants:product_variants(*)')
+    .select('*, variants:product_variants(*), categories(*)') // ✅ Join Categories
     .eq('store_id', storeId) 
     .eq('is_active', true)
     .eq('is_featured', true)
     .limit(8);
 
   if (!data) return [];
-  return (data as unknown as ProductWithFullVariants[]).map(mapToProduct);
+  // @ts-ignore
+  return (data as ProductWithRelations[]).map(mapToProduct);
 };
 
 export const getFeaturedProducts = cacheService(
@@ -94,17 +107,17 @@ export const getFeaturedProducts = cacheService(
 // ==========================================
 type FeedData = {
   grouped: Record<string, Product[]>;
-  metadata: Record<string, CategoryMetaRow>;
+  metadata: Record<string, CategoryRow>; // Updated to use Master Row
 };
 
 const getCategoryFeedInternal = async (storeId: string): Promise<FeedData> => {
   const supabase = createStaticClient();
   const RAIL_LIMIT = 8;
 
-  const [productsRes, sectionsRes, metaRes] = await Promise.all([
+  const [productsRes, sectionsRes, catsRes] = await Promise.all([
     supabase
         .from('products')
-        .select('*, variants:product_variants(price)')
+        .select('*, variants:product_variants(price), categories(*)') // ✅ Join Categories
         .eq('store_id', storeId)
         .eq('is_active', true)
         .order('created_at', { ascending: false }),
@@ -117,27 +130,31 @@ const getCategoryFeedInternal = async (storeId: string): Promise<FeedData> => {
         .order('sort_order'),
 
     supabase
-        .from('category_metadata')
+        .from('categories') // ✅ Fetch from Master Table
         .select('*')
         .eq('store_id', storeId)
   ]);
 
-  const allProducts = (productsRes.data as unknown as ProductWithPrice[] || []).map(mapToListProduct);
+  // @ts-ignore
+  const allProducts = (productsRes.data as ProductWithPrice[] || []).map(mapToListProduct);
   const sections = sectionsRes.data || [];
   
-  const metadataMap: Record<string, CategoryMetaRow> = {};
-  metaRes.data?.forEach((m) => {
-    metadataMap[m.slug.toLowerCase()] = m;
+  // Map Slug -> Category Row
+  const metadataMap: Record<string, CategoryRow> = {};
+  catsRes.data?.forEach((c) => {
+    metadataMap[c.slug] = c;
   });
 
   const grouped: Record<string, Product[]> = {};
 
-  // Admin Sections
+  // Admin Sections Logic
   if (sections.length > 0) {
       sections.forEach(section => {
           const rules = section.filter_rules as unknown as FilterRule[];
           const matches = allProducts.filter(p => 
-              p.category.toLowerCase() === section.category_slug.toLowerCase() &&
+              // We compare slugs now for better accuracy
+              (metadataMap[p.category.toLowerCase()]?.slug === section.category_slug || 
+               p.category.toLowerCase() === section.category_slug.toLowerCase()) &&
               matchesRules(p, rules)
           );
 
@@ -154,13 +171,15 @@ const getCategoryFeedInternal = async (storeId: string): Promise<FeedData> => {
       });
   }
 
-  // Fallback
+  // Fallback Grouping (By Slug)
   allProducts.forEach(p => {
-      const catKey = (p.category || 'uncategorized').toLowerCase();
-      if (!grouped[catKey]) grouped[catKey] = [];
-      if (grouped[catKey].length < RAIL_LIMIT) {
-          if (!grouped[catKey].some(ex => ex.id === p.id)) {
-              grouped[catKey].push(p);
+      // Find the slug for this product's category name
+      const catSlug = Object.values(metadataMap).find(c => c.name === p.category)?.slug || slugify(p.category);
+      
+      if (!grouped[catSlug]) grouped[catSlug] = [];
+      if (grouped[catSlug].length < RAIL_LIMIT) {
+          if (!grouped[catSlug].some(ex => ex.id === p.id)) {
+              grouped[catSlug].push(p);
           }
       }
   });
@@ -185,13 +204,14 @@ const getProductBySlugInternal = async (slug: string, storeId: string): Promise<
   const supabase = createStaticClient();
   const { data } = await supabase
     .from('products')
-    .select('*, variants:product_variants(*)')
+    .select('*, variants:product_variants(*), categories(*)') // ✅ Join
     .eq('store_id', storeId)
     .eq('slug', slug)
     .single();
 
   if (!data) return null;
-  return mapToProduct(data as unknown as ProductWithFullVariants);
+  // @ts-ignore
+  return mapToProduct(data as ProductWithRelations);
 };
 
 export const getProductBySlug = cacheService(
@@ -203,19 +223,32 @@ export const getProductBySlug = cacheService(
 // ==========================================
 // 4. RELATED PRODUCTS
 // ==========================================
-const getRelatedProductsInternal = async (category: string, excludeId: string, storeId: string): Promise<Product[]> => {
+const getRelatedProductsInternal = async (categorySlug: string, excludeId: string, storeId: string): Promise<Product[]> => {
   const supabase = createStaticClient();
+  
+  // ✅ 1. Find Category ID from Slug first
+  const { data: category } = await supabase
+    .from('categories')
+    .select('id')
+    .eq('store_id', storeId)
+    .eq('slug', categorySlug)
+    .single();
+
+  if (!category) return [];
+
+  // ✅ 2. Filter by Category ID
   const { data } = await supabase
     .from('products')
-    .select('*, variants:product_variants(price)')
+    .select('*, variants:product_variants(price), categories(*)')
     .eq('store_id', storeId) 
-    .eq('category', category)
+    .eq('category_id', category.id) // Fast ID lookup
     .neq('id', excludeId)
     .eq('is_active', true)
     .limit(4);
 
   if (!data) return [];
-  return (data as unknown as ProductWithPrice[]).map(mapToListProduct);
+  // @ts-ignore
+  return (data as ProductWithPrice[]).map(mapToListProduct);
 };
 
 export const getRelatedProducts = cacheService(
@@ -225,52 +258,44 @@ export const getRelatedProducts = cacheService(
 );
 
 // ==========================================
-// 5. CATEGORY PAGE DATA (Updated with Reverse Lookup)
+// 5. CATEGORY PAGE DATA (Optimized)
 // ==========================================
 export type CategoryPageData = {
   products: Product[];
   sections: CategorySection[];
-  categoryTitle: string; // ✅ Added title
+  categoryTitle: string;
 };
 
 const getCategoryPageDataInternal = async (urlSlug: string, storeId: string): Promise<CategoryPageData> => {
   const supabase = createStaticClient();
 
-  // 1. REVERSE LOOKUP: Find the Real Category Name
-  // Fetch all unique categories to see which one matches the slug
-  const { data: categories } = await supabase
-    .from('products')
-    .select('category')
+  // ✅ 1. Direct Lookup via Master Table (No fuzzy text matching needed!)
+  const { data: category } = await supabase
+    .from('categories')
+    .select('*')
     .eq('store_id', storeId)
-    .not('category', 'is', null);
+    .eq('slug', urlSlug)
+    .single();
 
-  const uniqueCategories = Array.from(new Set(categories?.map(c => c.category)));
-  
-  // Find the match: slugify("Apparel & Comfort") === "apparel-and-comfort"
-  const realCategoryName = uniqueCategories.find(cat => 
-    slugify(cat || '') === urlSlug
-  );
+  if (!category) return { products: [], sections: [], categoryTitle: 'Category Not Found' };
 
-  // Fallback to decodeURIComponent if no smart match found
-  const searchName = realCategoryName || decodeURIComponent(urlSlug);
-
-  // 2. Fetch Products using the REAL Database Name
+  // ✅ 2. Fetch Products using ID
   const { data: productsRaw } = await supabase
     .from('products')
-    .select('*, variants:product_variants(price)')
+    .select('*, variants:product_variants(price), categories(*)')
     .eq('store_id', storeId)
-    .eq('category', searchName) // ✅ Correct Name
+    .eq('category_id', category.id) // Robust link
     .eq('is_active', true);
 
-  const products = (productsRaw as unknown as ProductWithPrice[] || []).map(mapToListProduct);
+  // @ts-ignore
+  const products = (productsRaw as ProductWithPrice[] || []).map(mapToListProduct);
 
   // 3. Fetch Layouts
-  // We check both the slug (if Admin saved it as slug) and the name
   const { data: sectionsRaw } = await supabase
     .from('category_sections')
     .select('*')
     .eq('store_id', storeId)
-    .or(`category_slug.eq.${urlSlug},category_slug.eq.${searchName}`)
+    .eq('category_slug', urlSlug) // Sections still use slug, which is fine
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
 
@@ -284,7 +309,7 @@ const getCategoryPageDataInternal = async (urlSlug: string, storeId: string): Pr
       filter_rules: (s.filter_rules as unknown as FilterRule[]) || []
   }));
 
-  return { products, sections, categoryTitle: searchName };
+  return { products, sections, categoryTitle: category.name };
 };
 
 export const getCategoryPageData = cacheService(

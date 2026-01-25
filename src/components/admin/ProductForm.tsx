@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { upsertProduct } from '@/actions/product-actions';
-import { getCategories, createCategory } from '@/actions/category-actions';
+// We don't need createCategory here anymore because we enforce selection from existing list
 import { useAdminRole } from '@/hooks/useAdminRole';
 import { useAdminData } from '@/hooks/useAdminData';
 import { Database } from '@/lib/database.types';
@@ -22,11 +22,12 @@ type VariantRowDB = Database['public']['Tables']['product_variants']['Row'];
 // Extend the base product to include the nested data we fetch for editing
 interface ProductWithRelations extends ProductRow {
   product_variants: VariantRowDB[];
+  // ✅ ADDED: Join support for hydration
+  categories?: { id: string; name: string } | null;
 }
 
 type AttributeOption = { id: string; key: string; value: string };
 
-// Internal UI state for a variant row
 type VariantUI = {
   id: string;
   condition: string;
@@ -39,7 +40,6 @@ type ImageItem = { id: string; url?: string; file?: File; };
 
 interface ProductFormProps {
   onClose: () => void;
-  // ✅ FIX 1: Strict Input Type
   initialData?: ProductWithRelations | null; 
 }
 
@@ -54,38 +54,43 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
   
   // --- PARENT STATE ---
   const [images, setImages] = useState<ImageItem[]>([]);
+  
+  // ✅ UPDATED: Use category_id instead of text category
   const [productData, setProductData] = useState({
     name: '',
     brand: '',
-    category: '', 
+    category_id: '', 
     description: '',
     basePrice: '',
     slug: ''
   });
 
-  // --- DYNAMIC CATEGORIES STATE ---
-  const [existingCategories, setExistingCategories] = useState<string[]>([]);
-  const [isNewCategory, setIsNewCategory] = useState(false);
+  // ✅ UPDATED: Store full objects, not just strings
+  const [categories, setCategories] = useState<{id: string, name: string}[]>([]);
 
-  // --- MATRIX STATE (Bulk Mode) ---
+  // --- MATRIX STATE ---
   const [availableOptions, setAvailableOptions] = useState<AttributeOption[]>([]);
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string[]>>({});
   const [generatedVariants, setGeneratedVariants] = useState<VariantUI[]>([]);
 
-  // 0. FETCH EXISTING CATEGORIES
+  // 0. FETCH EXISTING CATEGORIES (Central List)
   useEffect(() => {
     const fetchCats = async () => {
         if (!storeId) return;
         
-        // ✅ NEW: Fetch from central categories table
-        const cats = await getCategories(storeId);
+        // Fetch from the MASTER table
+        const { data } = await supabase
+          .from('categories')
+          .select('id, name')
+          .eq('store_id', storeId)
+          .order('name');
         
-        if (cats) {
-            setExistingCategories(cats.map(c => c.name));
+        if (data) {
+            setCategories(data);
             
-            // Set default if needed
-            if (!initialData && cats.length > 0 && !productData.category) {
-                setProductData(prev => ({ ...prev, category: cats[0].name }));
+            // Set default if needed (and not editing)
+            if (!initialData && data.length > 0 && !productData.category_id) {
+                setProductData(prev => ({ ...prev, category_id: data[0].id }));
             }
         }
     };
@@ -98,7 +103,8 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
       setProductData({
         name: initialData.name,
         brand: initialData.brand || '',
-        category: initialData.category,
+        // ✅ Load ID (Use joined data if category_id column is null for some reason)
+        category_id: initialData.category_id || initialData.categories?.id || '',
         description: initialData.description || '',
         basePrice: initialData.base_price?.toString() || '',
         slug: initialData.slug
@@ -109,11 +115,9 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
       }
 
       if (initialData.product_variants) {
-        // ✅ FIX 2: Safe mapping of DB rows to UI state
         setGeneratedVariants(initialData.product_variants.map((v) => ({
           id: v.id,
           condition: v.condition || 'New',
-          // Safe cast for JSONB column 'specs'
           specs: (v.specs as Record<string, string>) || {},
           price: v.price || 0,
           stock: v.stock || 0
@@ -122,32 +126,32 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
     }
   }, [initialData]);
 
-  // 2. FETCH ATTRIBUTES BASED ON CATEGORY
+  // 2. FETCH ATTRIBUTES BASED ON CATEGORY ID
   useEffect(() => {
     let isMounted = true;
     
     const fetchOptions = async () => {
       setAvailableOptions([]); 
       
-      // Only reset selection if category ACTUALLY changed significantly
-      if (!initialData || productData.category.toLowerCase() !== initialData.category.toLowerCase()) {
+      // Reset selection if category changed
+      if (!initialData || productData.category_id !== initialData.category_id) {
          setSelectedAttributes({});
       }
 
-      if (!productData.category) return;
+      if (!productData.category_id) return;
 
-      // ✅ FIX: Fetch logic handles case sensitivity better
+      // ✅ FIX: Query by ID (Robust)
       const { data } = await supabase
         .from('attribute_options')
         .select('*')
-        .ilike('category', productData.category) // Use ilike for case-insensitive match
+        .eq('category_id', productData.category_id) 
         .order('sort_order');
       
       if (isMounted && data) {
         setAvailableOptions(data);
         
-        // Restore selected attributes logic (Unchanged)
-        if (initialData && productData.category === initialData.category && initialData.product_variants?.[0]?.specs) {
+        // Restore selected attributes logic
+        if (initialData && productData.category_id === initialData.category_id && initialData.product_variants?.[0]?.specs) {
            const firstVariantSpecs = initialData.product_variants[0].specs as Record<string, string>;
            const restoredAttributes: Record<string, string[]> = {};
            
@@ -163,7 +167,7 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
 
     fetchOptions();
     return () => { isMounted = false; };
-  }, [productData.category, initialData]);
+  }, [productData.category_id, initialData]);
 
   // 3. AUTO SLUG
   useEffect(() => {
@@ -180,7 +184,7 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
     const newErrors: Record<string, string> = {};
     if (!productData.name.trim()) newErrors.name = 'Product name is required';
     if (!productData.brand.trim()) newErrors.brand = 'Brand is required';
-    if (!productData.category.trim()) newErrors.category = 'Category is required';
+    if (!productData.category_id) newErrors.category = 'Category is required'; // Check ID
     if (!productData.basePrice || Number(productData.basePrice) <= 0) newErrors.basePrice = 'Valid price required';
     if (images.length === 0) newErrors.images = 'At least one image required';
     setErrors(newErrors);
@@ -228,7 +232,6 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
         return;
     }
 
-    // ✅ FIX 3: Strict Typing for Recursion
     const combine = ([head, ...tail]: string[]): Record<string, string>[] => {
       if (!head) return [{}];
       const tailCombos = combine(tail);
@@ -240,7 +243,6 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
     const combinations = combine(keys);
     
     const newRows: VariantUI[] = combinations.map((combo, idx) => {
-      // Find case-insensitive 'condition' key
       const conditionKey = Object.keys(combo).find(k => k.toLowerCase() === 'condition');
       const condition = conditionKey ? combo[conditionKey] : 'New';
       
@@ -271,7 +273,6 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
   };
 
   const handleFinalSave = async () => {
-    // 1. Validation Check
     if (generatedVariants.length === 0) {
         toast.error("Please generate variants first!");
         return;
@@ -280,7 +281,7 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
     setLoading(true);
     
     try {
-      // 2. Upload Images (Parallel)
+      // 2. Upload Images
       const finalImageUrls = await Promise.all(
         images.map(async (img) => {
            if (img.file) {
@@ -302,7 +303,8 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
         name: productData.name,
         slug: productData.slug + (initialData ? '' : `-${Math.floor(Math.random() * 1000)}`),
         brand: productData.brand,
-        category: productData.category, 
+        // ✅ Send ID, not Text
+        category_id: productData.category_id, 
         description: productData.description,
         base_price: Number(productData.basePrice),
         base_images: finalImageUrls,
@@ -316,15 +318,15 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
         stock: v.stock
       }));
 
-      // 4. Server Action Call
       const res = await upsertProduct(productPayload, variantsPayload);
 
-      // 5. Success Handling
       if (res?.success) {
          toast.success(initialData ? "Inventory Updated" : "Product Published", {
             description: `${productData.name} saved successfully.`
          });
-         onClose(); // ✅ This closes the modal
+         onClose(); 
+      } else {
+         throw new Error(res?.error || "Save failed");
       }
 
     } catch (e: any) {
@@ -343,6 +345,9 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
 
   const totalSelected = Object.values(selectedAttributes).flat().length;
   const inputBaseClass = "w-full bg-white text-slate-900 border-2 border-slate-200 rounded-xl font-bold px-4 py-3.5 outline-none transition-all placeholder:text-slate-400 placeholder:font-medium focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 hover:border-slate-300";
+
+  // Find category Name for display logic (optional)
+  const selectedCategoryName = categories.find(c => c.id === productData.category_id)?.name || 'Uncategorized';
 
   return (
     <div className="flex flex-col h-full bg-[#F8FAFC]">
@@ -408,36 +413,16 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
                     <div className="w-full">
                       <label className="input-label">Category</label>
                       <div className="relative group w-full">
-                        {existingCategories.length > 0 && !isNewCategory ? (
-                            <>
-                                <select className={`${inputBaseClass} appearance-none capitalize`} value={productData.category} onChange={(e) => {
-                                    const val = e.target.value;
-                                    if(val === 'new') { 
-                                        setIsNewCategory(true); 
-                                        setProductData({...productData, category: ''}); 
-                                    } else {
-                                        setProductData({...productData, category: val});
-                                    }
-                                }}>
-                                    {existingCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                                    <option value="new">+ Create New Category</option>
-                                </select>
-                                <ChevronRight className="absolute right-4 top-3.5 rotate-90 text-slate-400 pointer-events-none" size={16}/>
-                            </>
-                        ) : (
-                            <div className="relative">
-                                <input 
-                                    className={`${inputBaseClass} pr-10`} 
-                                    value={productData.category} 
-                                    onChange={e => setProductData({...productData, category: e.target.value})} 
-                                    placeholder="Type new category..."
-                                    autoFocus
-                                />
-                                {existingCategories.length > 0 && (
-                                    <button onClick={() => setIsNewCategory(false)} className="absolute right-2 top-2 p-1.5 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded">Cancel</button>
-                                )}
-                            </div>
-                        )}
+                         {/* ✅ STRICT CATEGORY SELECTOR */}
+                         <select 
+                             className={`${inputBaseClass} appearance-none capitalize`} 
+                             value={productData.category_id} 
+                             onChange={(e) => setProductData({...productData, category_id: e.target.value})}
+                         >
+                             <option value="">Select Category...</option>
+                             {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                         </select>
+                         <ChevronRight className="absolute right-4 top-3.5 rotate-90 text-slate-400 pointer-events-none" size={16}/>
                       </div>
                     </div>
                     <div className="w-full">
@@ -492,7 +477,7 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
                   {images.length > 0 && <div className="w-14 h-14 rounded-lg bg-white/10 p-1"><img src={images[0].file ? URL.createObjectURL(images[0].file!) : images[0].url} className="w-full h-full object-cover rounded" alt="cover" /></div>}
                   <div>
                     <h3 className="text-lg font-black">{productData.name}</h3>
-                    <div className="flex gap-3 text-sm text-slate-300 font-medium"><span>{productData.brand}</span><span>•</span><span className="capitalize">{productData.category}</span></div>
+                    <div className="flex gap-3 text-sm text-slate-300 font-medium"><span>{productData.brand}</span><span>•</span><span className="capitalize">{selectedCategoryName}</span></div>
                   </div>
                 </div>
                 <button onClick={() => setStep(1)} className="text-xs font-bold bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-colors">Edit Details</button>
@@ -519,7 +504,7 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
                                 const isSelected = selectedAttributes[key]?.includes(opt.value);
                                 return (
                                     <button key={opt.id} onClick={() => toggleAttribute(key, opt.value)} className={`px-3 py-1.5 text-xs font-bold rounded-lg border-2 transition ${isSelected ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-400'}`}>
-                                             {opt.value}
+                                                 {opt.value}
                                     </button>
                                 );
                              })}
@@ -528,7 +513,7 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
                     ))}
                     {Object.keys(groupedOptions).length === 0 && (
                         <div className="col-span-3 text-center py-10 text-slate-400 italic">
-                            No attributes found for this category. <br/>Add attributes in the Settings page or create custom variants below.
+                            No attributes found for this category. <br/>Add attributes in the Settings page.
                         </div>
                     )}
                  </div>

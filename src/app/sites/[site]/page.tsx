@@ -1,6 +1,5 @@
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
-
 import { Database } from '@/lib/database.types';
 
 // Components
@@ -15,13 +14,17 @@ import { CategoryRail } from '@/components/home/CategoryRail';
 
 type StoreRow = Database['public']['Tables']['stores']['Row'];
 type BannerRow = Database['public']['Tables']['banners']['Row'];
-type ProductRow = Database['public']['Tables']['products']['Row'];
 type BlockRow = Database['public']['Tables']['content_blocks']['Row'];
+
+// ✅ 1. Define Product with Joined Category
+type ProductWithCategory = Database['public']['Tables']['products']['Row'] & {
+  categories: { name: string; slug: string } | null;
+};
 
 // Helper Interface for the Join Query
 interface StoreData extends StoreRow {
   banners: BannerRow[];
-  products: ProductRow[];
+  products: ProductWithCategory[]; // Use the extended type
   content_blocks: BlockRow[];
 }
 
@@ -40,13 +43,13 @@ export default async function StoreHomePage({ params }: { params: Promise<{ site
   const resolvedParams = await params; 
   const supabase = await createClient();
 
-  // 1. FETCH EVERYTHING IN ONE QUERY (Relational Join)
+  // ✅ 2. UPDATE QUERY: Join categories(name, slug)
   const { data: storeRaw } = await supabase
     .from('stores')
     .select(`
       *,
       banners(*),
-      products(*),
+      products(*, categories(name, slug)), 
       content_blocks(*)
     `)
     .eq('slug', resolvedParams.site)
@@ -54,11 +57,12 @@ export default async function StoreHomePage({ params }: { params: Promise<{ site
 
   if (!storeRaw) return notFound();
 
-  // 2. CAST DATA
-  const store = storeRaw as unknown as StoreData;
+  // 3. CAST DATA
+  // @ts-ignore - Supabase types struggle with complex deep joins sometimes
+  const store = storeRaw as StoreData;
   const settings = (store.settings as Record<string, string>) || {};
 
-  // 3. ORGANIZE DATA
+  // 4. ORGANIZE DATA
   const activeBanners = store.banners.filter(b => b.is_active);
   const brandBanners = activeBanners.filter(b => b.slot === 'brand_hero');
   const heroGridBanners = activeBanners.filter(b => ['main_hero', 'side_top', 'side_bottom'].includes(b.slot));
@@ -69,7 +73,11 @@ export default async function StoreHomePage({ params }: { params: Promise<{ site
     .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
     .slice(0, 8);
 
-  const categories = Array.from(new Set(store.products.map(p => p.category).filter(Boolean))) as string[];
+  // ✅ 5. FIX CATEGORY EXTRACTION
+  // Map over products and extract the JOINED name
+  const categories = Array.from(new Set(
+      store.products.map(p => p.categories?.name).filter(Boolean)
+  )) as string[];
 
   return (
     <div className="bg-[#F8FAFC] min-h-screen font-sans">
@@ -81,13 +89,16 @@ export default async function StoreHomePage({ params }: { params: Promise<{ site
          <BrandHero banners={brandBanners} storeName={store.name} />
          {heroGridBanners.length > 0 && <HeroGrid banners={heroGridBanners} />}
          <FeaturedRow products={featuredProducts} />
+         
          {categories.slice(0, 3).map(cat => (
             <CategoryRail 
                key={cat} 
                category={cat} 
-               products={store.products.filter(p => p.category === cat)} 
+               // ✅ FIX FILTER: Match against joined name
+               products={store.products.filter(p => p.categories?.name === cat)} 
             />
          ))}
+         
          <SocialGrid settings={settings} blocks={store.content_blocks} />
          <BranchSlider banners={branchBanners} settings={settings} />
          <RequestCTA settings={settings} />
