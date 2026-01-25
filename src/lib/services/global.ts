@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-
+import { cache } from 'react'; 
 // We now require storeId to ensure we only fetch data for the relevant store.
 export async function getGlobalData(storeId: string) {
   if (!storeId) {
