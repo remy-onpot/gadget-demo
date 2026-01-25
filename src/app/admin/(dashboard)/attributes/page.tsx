@@ -1,319 +1,283 @@
 "use client";
 
-import React, { useState, useEffect, useTransition, useMemo } from 'react';
+import React, { useEffect, useState, useTransition } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useAdminData } from '@/hooks/useAdminData'; 
-import { createAttribute, updateAttribute, deleteAttribute } from '@/app/admin/(dashboard)/actions';
-import { Database } from '@/lib/database.types'; 
-import { Plus, Trash2, Save, X, Loader2, Tags, Edit2, List, HelpCircle, ChevronDown } from 'lucide-react';
+import { useAdminData } from '@/hooks/useAdminData';
+import { Database } from '@/lib/database.types';
+import { Save, Loader2, Plus, Trash2, ListFilter, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 
-// ✅ 1. Define Type with Join
-// We extend the DB row to include the joined 'categories' table data
-type AttributeOptionWithJoin = Database['public']['Tables']['attribute_options']['Row'] & {
-  categories: { name: string } | null; 
-};
+type AttributeRow = Database['public']['Tables']['attribute_options']['Row'];
+type CategoryRow = Database['public']['Tables']['categories']['Row'];
 
 export default function AttributesPage() {
   const { storeId, loading: authLoading } = useAdminData();
-  const [attributes, setAttributes] = useState<AttributeOptionWithJoin[]>([]);
-  const [categoryList, setCategoryList] = useState<{id: string, name: string}[]>([]); // ✅ List of objects
+  const [categories, setCategories] = useState<CategoryRow[]>([]);
+  const [attributes, setAttributes] = useState<AttributeRow[]>([]);
+  
+  // --- FORM STATE ---
+  const [selectedCatId, setSelectedCatId] = useState<string>('');
+  const [attrKey, setAttrKey] = useState('');
+  const [attrValues, setAttrValues] = useState<string[]>(['']); // Array of inputs
+  
   const [loading, setLoading] = useState(true);
-  
-  // Editor State
-  const [isEditing, setIsEditing] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  
-  // ✅ 2. Form Data uses 'category_id' now
-  const [formData, setFormData] = useState({
-    category_id: '', 
-    key: '',
-    value: '',
-    sort_order: 0
-  });
-
   const [isPending, startTransition] = useTransition();
-  
-  // 3. FETCH DATA
-  const fetchData = async () => {
+
+  // 1. INITIAL LOAD
+  useEffect(() => {
     if (!storeId) return;
-    setLoading(true);
     
-    // A. Fetch Attributes with JOIN to get Category Name
-    const { data: attrData, error } = await supabase
-      .from('attribute_options')
-      .select('*, categories(name)') // 👈 The Magic Join
-      .eq('store_id', storeId)
-      .order('sort_order', { ascending: true });
-        
-    if (error) {
-       console.error(error);
-       toast.error("Failed to load attributes");
-    } else if (attrData) {
-       // @ts-ignore - Supabase types sometimes struggle with joins, safe cast here
-       setAttributes(attrData as AttributeOptionWithJoin[]);
-    }
+    const loadData = async () => {
+      setLoading(true);
+      const [catsRes, attrsRes] = await Promise.all([
+        supabase.from('categories').select('*').eq('store_id', storeId).order('name'),
+        supabase.from('attribute_options').select('*').eq('store_id', storeId).order('key')
+      ]);
 
-    // B. Fetch Categories for Dropdown
-    const { data: catData } = await supabase
-      .from('categories')
-      .select('id, name')
-      .eq('store_id', storeId)
-      .order('name');
-      
-    if (catData) setCategoryList(catData);
+      if (catsRes.data) setCategories(catsRes.data);
+      if (attrsRes.data) setAttributes(attrsRes.data);
+      setLoading(false);
+    };
+    loadData();
+  }, [storeId]);
 
-    setLoading(false);
+  // 2. INPUT HANDLERS (Add/Remove Lines)
+  const handleAddInput = () => {
+    setAttrValues([...attrValues, '']);
   };
 
-  useEffect(() => {
-    if (storeId) fetchData();
-  }, [storeId]);
-  
-  // 4. SUGGESTIONS (For Attribute Name auto-complete)
-  const suggestions = useMemo(() => {
-    const keys = Array.from(new Set(attributes.map(a => a.key))).sort();
-    return { keys };
-  }, [attributes]);
+  const handleRemoveInput = (index: number) => {
+    const newValues = [...attrValues];
+    newValues.splice(index, 1);
+    setAttrValues(newValues);
+  };
 
-  const handleSave = () => {
-    if (!formData.category_id) return toast.error("Product Category is required");
-    if (!formData.key) return toast.error("Attribute Name is required");
-    if (!formData.value) return toast.error("Option Value is required");
-    
+  const handleValueChange = (index: number, val: string) => {
+    const newValues = [...attrValues];
+    newValues[index] = val;
+    setAttrValues(newValues);
+  };
+
+  // 3. BULK SAVE ACTION
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!storeId || !selectedCatId || !attrKey) {
+        toast.error("Please select a category and enter an attribute name");
+        return;
+    }
+
+    // Filter out empty lines
+    const validValues = attrValues.filter(v => v.trim() !== '');
+    if (validValues.length === 0) {
+        toast.error("Please add at least one value");
+        return;
+    }
+
     startTransition(async () => {
-        try {
-            const payload = {
-                store_id: storeId,
-                category_id: formData.category_id,
-                key: formData.key,
-                value: formData.value,
-                sort_order: formData.sort_order
-            };
+        // Prepare bulk insert payload
+        const payload = validValues.map((val, index) => ({
+            store_id: storeId,
+            category_id: selectedCatId,
+            key: attrKey,   // e.g. "Color"
+            value: val,     // e.g. "Red"
+            sort_order: index
+        }));
 
-            const promise = editingId 
-               ? updateAttribute(editingId, payload) 
-               : createAttribute(payload);
+        const { data, error } = await supabase
+            .from('attribute_options')
+            .insert(payload)
+            .select();
 
-            await promise;
-            
-            toast.success(editingId ? "Option updated" : "Option created");
-            setIsEditing(false);
-            setEditingId(null);
-            
-            // Smart Reset: Keep Category and Key, just clear Value for rapid entry
-            setFormData(prev => ({ ...prev, value: '', sort_order: prev.sort_order + 10 })); 
-            fetchData(); 
-
-        } catch (e: any) {
-            toast.error(`Failed: ${e.message}`);
+        if (error) {
+            toast.error("Failed to add attributes: " + error.message);
+        } else {
+            setAttributes([...attributes, ...(data || [])]);
+            // Reset Values but keep Category/Key so you can keep working
+            setAttrValues(['']); 
+            toast.success(`Added ${data.length} options for ${attrKey}`);
         }
     });
   };
-  
-  const handleDelete = (id: string) => {
-    if (!confirm('Delete this option?')) return;
-    toast.promise(deleteAttribute(id), {
-       loading: 'Deleting...',
-       success: () => {
-          setAttributes(prev => prev.filter(a => a.id !== id)); 
-          return "Option deleted";
-       },
-       error: "Could not delete option"
-    });
-  };
 
-  const openEditor = (attr?: AttributeOptionWithJoin) => {
-    if (attr) {
-      setEditingId(attr.id);
-      setFormData({
-         category_id: attr.category_id || '',
-         key: attr.key,
-         value: attr.value,
-         sort_order: attr.sort_order || 0
-      });
-    } else {
-      setEditingId(null);
-      // Smart default: use most recent category ID used
-      const lastCatId = attributes.length > 0 ? attributes[attributes.length - 1].category_id || '' : '';
-      const lastKey = attributes.length > 0 ? attributes[attributes.length - 1].key : '';
+  // 4. DELETE ATTRIBUTE
+  const handleDelete = async (id: string) => {
+      // Optimistic Update
+      setAttributes(prev => prev.filter(a => a.id !== id));
       
-      setFormData({ 
-         category_id: lastCatId, 
-         key: lastKey, 
-         value: '', 
-         sort_order: 0 
-      });
-    }
-    setIsEditing(true);
+      const { error } = await supabase.from('attribute_options').delete().eq('id', id);
+      if (error) {
+          toast.error("Failed to delete");
+          // Revert if failed (optional, but good practice)
+      } else {
+          toast.success("Option deleted");
+      }
   };
 
-  // ✅ 5. GROUPING LOGIC (Using the joined name)
-  const grouped = attributes.reduce((acc, curr) => {
-     // Handle cases where category might be null (deleted) or joined
-     const catName = curr.categories?.name || 'Uncategorized';
-     
-     if (!acc[catName]) acc[catName] = [];
-     acc[catName].push(curr);
-     return acc;
-  }, {} as Record<string, AttributeOptionWithJoin[]>);
-
-  if (authLoading || (loading && attributes.length === 0)) {
-     return <div className="min-h-[60vh] flex items-center justify-center"><Loader2 className="animate-spin text-slate-300" size={32}/></div>;
-  }
+  if (authLoading || loading) return <div className="h-[60vh] flex items-center justify-center"><Loader2 className="animate-spin text-slate-300" size={32}/></div>;
 
   return (
-    <div className="max-w-6xl mx-auto pb-20 animate-in fade-in duration-500">
+    <div className="max-w-6xl mx-auto pb-24 animate-in fade-in duration-500">
       
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
-        <div>
-           <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
-             <Tags className="text-indigo-600" /> Attribute Options
-           </h1>
-           <p className="text-slate-500 font-medium mt-2">Define options like Sizes, Colors, or Materials for your products.</p>
-        </div>
-        <button 
-           onClick={() => openEditor()}
-           className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-800 transition shadow-xl shadow-slate-900/10 active:scale-95"
-        >
-           <Plus size={20} /> Add New Option
-        </button>
+      <div className="mb-8">
+        <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
+           <ListFilter className="text-indigo-600" /> Attribute Manager
+        </h1>
+        <p className="text-slate-500 mt-1 font-medium">Define filters like Color, Size, and Material for your categories.</p>
       </div>
 
-      {/* ATTRIBUTE GRID */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-         {Object.entries(grouped).map(([categoryName, items]) => (
-            <div key={categoryName} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-               <div className="bg-slate-50 px-5 py-4 border-b border-gray-200 flex justify-between items-center">
-                  <span className="font-black text-slate-700 uppercase tracking-wider text-sm">{categoryName}</span>
-                  <span className="text-xs font-bold bg-white border border-gray-200 px-2 py-1 rounded text-slate-500">{items.length} options</span>
-               </div>
-               <div className="divide-y divide-gray-100 max-h-[300px] overflow-y-auto">
-                  {items.map(attr => (
-                     <div key={attr.id} className="px-5 py-3 flex items-center justify-between hover:bg-slate-50 group transition-colors">
-                        <div>
-                           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{attr.key}</div>
-                           <div className="font-bold text-slate-800">{attr.value}</div>
-                        </div>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                           <button onClick={() => openEditor(attr)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                              <Edit2 size={14} />
-                           </button>
-                           <button onClick={() => handleDelete(attr.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                              <Trash2 size={14} />
-                           </button>
-                        </div>
-                     </div>
-                  ))}
-               </div>
-            </div>
-         ))}
-         
-         {Object.keys(grouped).length === 0 && (
-            <div className="col-span-full py-20 flex flex-col items-center justify-center text-center border-2 border-dashed border-gray-200 rounded-3xl bg-slate-50/50">
-               <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-                  <List className="text-slate-300" size={32}/>
-               </div>
-               <h3 className="text-lg font-bold text-slate-900">No options defined yet</h3>
-               <p className="text-slate-500 max-w-sm mt-2 mb-6">Start by adding common options like "Size: Medium" or "Color: Blue".</p>
-               <button onClick={() => openEditor()} className="text-indigo-600 font-bold hover:underline">Create First Option</button>
-            </div>
-         )}
-      </div>
+      <div className="grid lg:grid-cols-12 gap-8">
+        
+        {/* === LEFT COLUMN: THE BULK CREATOR (Fixed Width) === */}
+        <div className="lg:col-span-4">
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm sticky top-6">
+                <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2 text-lg">
+                    <Plus className="bg-indigo-100 text-indigo-600 p-1 rounded-md" size={24}/> 
+                    Add New Attributes
+                </h3>
 
-      {/* EDITOR MODAL */}
-      {isEditing && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
-           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col">
-             
-             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white">
-                 <h3 className="font-black text-xl text-slate-900">{editingId ? 'Edit Option' : 'New Option'}</h3>
-                 <button onClick={() => setIsEditing(false)} className="p-2 hover:bg-gray-100 rounded-full text-slate-400 hover:text-slate-900 transition">
-                   <X size={20} />
-                 </button>
-             </div>
-             
-             <div className="p-6 space-y-5">
-                 {/* 1. CATEGORY SELECTOR (ID BASED) */}
-                 <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
-                       Product Category <HelpCircle size={12} className="text-slate-300"/>
-                    </label>
-                    <div className="relative">
-                        <select
-                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-indigo-500 focus:bg-white transition appearance-none"
-                            value={formData.category_id}
-                            onChange={e => setFormData({...formData, category_id: e.target.value})}
-                            autoFocus={!editingId}
-                        >
-                            <option value="">Select Category...</option>
-                            {categoryList.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
+                <form onSubmit={handleSave} className="space-y-5">
+                    {/* Category Select */}
+                    <div>
+                        <label className="text-xs font-bold text-slate-400 uppercase mb-1.5 block">1. Target Category</label>
+                        <div className="relative">
+                            <select 
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold outline-none focus:border-indigo-500 appearance-none"
+                                value={selectedCatId}
+                                onChange={(e) => setSelectedCatId(e.target.value)}
+                            >
+                                <option value="">-- Select Category --</option>
+                                {categories.map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Attribute Name */}
+                    <div>
+                        <label className="text-xs font-bold text-slate-400 uppercase mb-1.5 block">2. Attribute Name</label>
+                        <input 
+                            placeholder="e.g. Color, RAM, Size"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold outline-none focus:border-indigo-500 placeholder:font-normal"
+                            value={attrKey}
+                            onChange={(e) => setAttrKey(e.target.value)}
+                        />
+                    </div>
+
+                    {/* Dynamic Values */}
+                    <div>
+                        <label className="text-xs font-bold text-slate-400 uppercase mb-1.5 flex justify-between items-center">
+                            <span>3. Options (Values)</span>
+                            <span className="text-[10px] bg-slate-100 text-slate-500 px-2 rounded-full py-0.5 font-bold">Bulk Add</span>
+                        </label>
+                        
+                        <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1 custom-scrollbar">
+                            {attrValues.map((val, idx) => (
+                                <div key={idx} className="flex gap-2 animate-in slide-in-from-left-2 duration-300">
+                                    <input 
+                                        autoFocus={idx === attrValues.length - 1 && idx > 0}
+                                        placeholder={`Value ${idx + 1}`}
+                                        className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-50 transition-all font-medium"
+                                        value={val}
+                                        onChange={(e) => handleValueChange(idx, e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleAddInput();
+                                            }
+                                        }}
+                                    />
+                                    {attrValues.length > 1 && (
+                                        <button 
+                                            type="button"
+                                            onClick={() => handleRemoveInput(idx)}
+                                            className="text-slate-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg transition-colors"
+                                        >
+                                            <Trash2 size={16}/>
+                                        </button>
+                                    )}
+                                </div>
                             ))}
-                        </select>
-                        <ChevronDown className="absolute right-3 top-3.5 text-slate-400 pointer-events-none" size={16}/>
+                        </div>
+
+                        <button 
+                            type="button"
+                            onClick={handleAddInput}
+                            className="mt-3 text-xs font-bold text-indigo-600 flex items-center gap-1 hover:bg-indigo-50 px-3 py-2 rounded-lg transition-colors w-full justify-center border border-dashed border-indigo-200"
+                        >
+                            <Plus size={14} /> Add another option
+                        </button>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-1 font-medium">Group this option under a specific product type.</p>
-                 </div>
 
-                 {/* 2. ATTRIBUTE NAME (Key) */}
-                 <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Attribute Name</label>
-                    <input 
-                      list="key-suggestions"
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-indigo-500 focus:bg-white transition"
-                      placeholder="e.g. Size, Color, Material"
-                      value={formData.key}
-                      onChange={e => setFormData({...formData, key: e.target.value})}
-                    />
-                    <datalist id="key-suggestions">
-                       {suggestions.keys.map(k => <option key={k} value={k} />)}
-                    </datalist>
-                    <p className="text-[10px] text-slate-400 mt-1 font-medium">What kind of property is this? (e.g. Size)</p>
-                 </div>
-
-                 <div className="grid grid-cols-2 gap-4">
-                    {/* 3. OPTION VALUE */}
-                    <div>
-                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Option</label>
-                       <input 
-                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-indigo-500 focus:bg-white transition"
-                         placeholder="e.g. XL"
-                         value={formData.value}
-                         onChange={e => setFormData({...formData, value: e.target.value})}
-                       />
-                    </div>
-                    
-                    {/* 4. SORT */}
-                    <div>
-                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Order</label>
-                       <input 
-                         type="number"
-                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-indigo-500 focus:bg-white transition"
-                         value={formData.sort_order}
-                         onChange={e => setFormData({...formData, sort_order: parseInt(e.target.value) || 0})}
-                       />
-                    </div>
-                 </div>
-             </div>
-
-             <div className="p-6 border-t border-gray-100 bg-slate-50 flex justify-end gap-3">
-                 <button onClick={() => setIsEditing(false)} className="px-5 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-200 transition text-sm">Cancel</button>
-                 <button 
-                    onClick={handleSave} 
-                    disabled={isPending}
-                    className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-transform active:scale-95 flex items-center gap-2 text-sm disabled:opacity-70 disabled:cursor-not-allowed"
-                 >
-                    {isPending ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-                    Save Option
-                 </button>
-             </div>
-
-           </div>
+                    <button 
+                        type="submit"
+                        disabled={isPending || !selectedCatId}
+                        className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold mt-4 hover:bg-slate-800 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
+                    >
+                        {isPending ? <Loader2 className="animate-spin" /> : <Save size={18} />}
+                        Save All Options
+                    </button>
+                </form>
+            </div>
         </div>
-      )}
 
+        {/* === RIGHT COLUMN: LIST VIEW (Fluid Width) === */}
+        <div className="lg:col-span-8 space-y-6">
+            {categories.map(cat => {
+                const catAttrs = attributes.filter(a => a.category_id === cat.id);
+                if (catAttrs.length === 0) return null;
+
+                // Group by Key (e.g. Color: [Red, Blue])
+                const grouped: Record<string, AttributeRow[]> = {};
+                catAttrs.forEach(a => {
+                    if (!grouped[a.key]) grouped[a.key] = [];
+                    grouped[a.key].push(a);
+                });
+
+                return (
+                    <div key={cat.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                        <div className="bg-slate-50/50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+                            <h4 className="font-bold text-slate-800 text-lg">{cat.name}</h4>
+                            <span className="text-xs font-bold bg-white border border-gray-200 px-2 py-1 rounded text-slate-500">{catAttrs.length} items</span>
+                        </div>
+                        
+                        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                            {Object.entries(grouped).map(([key, rows]) => (
+                                <div key={key} className="bg-white">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <Tag size={14} className="text-indigo-500" />
+                                        <span className="text-xs font-bold uppercase text-slate-400 tracking-widest">{key}</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {rows.map(opt => (
+                                            <div key={opt.id} className="group relative bg-white border border-slate-200 rounded-md pl-3 pr-8 py-1.5 text-sm font-semibold text-slate-600 hover:border-red-200 hover:bg-red-50/30 transition-all cursor-default">
+                                                {opt.value}
+                                                <button 
+                                                    onClick={() => handleDelete(opt.id)}
+                                                    className="absolute right-1 top-1.5 p-0.5 text-slate-300 hover:text-red-500 hover:bg-red-100 rounded transition-all opacity-0 group-hover:opacity-100"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            })}
+
+            {attributes.length === 0 && (
+                <div className="text-center py-24 text-slate-400 border-2 border-dashed border-slate-100 rounded-3xl bg-slate-50/50">
+                    <ListFilter size={48} className="mx-auto mb-4 opacity-20" />
+                    <p className="font-medium text-lg text-slate-600">No attributes defined yet.</p>
+                    <p className="text-sm mt-1">Use the form on the left to start adding filters like Size or Color.</p>
+                </div>
+            )}
+        </div>
+
+      </div>
     </div>
   );
 }
