@@ -3,7 +3,6 @@ import { createClient } from '@/lib/supabase-server';
 import { Database } from '@/lib/database.types';
 
 // Components
-import { Header } from '@/components/layout/Header';
 import { BrandHero } from '@/components/home/BrandHero';
 import { HeroGrid } from '@/components/home/HeroGrid';
 import { FeaturedRow } from '@/components/home/FeaturedRow';
@@ -16,15 +15,15 @@ type StoreRow = Database['public']['Tables']['stores']['Row'];
 type BannerRow = Database['public']['Tables']['banners']['Row'];
 type BlockRow = Database['public']['Tables']['content_blocks']['Row'];
 
-// ✅ 1. Define Product with Joined Category
+// 1. Define Product with Joined Category
 type ProductWithCategory = Database['public']['Tables']['products']['Row'] & {
   categories: { name: string; slug: string } | null;
 };
 
-// Helper Interface for the Join Query
+// Helper Interface
 interface StoreData extends StoreRow {
   banners: BannerRow[];
-  products: ProductWithCategory[]; // Use the extended type
+  products: ProductWithCategory[];
   content_blocks: BlockRow[];
 }
 
@@ -43,7 +42,7 @@ export default async function StoreHomePage({ params }: { params: Promise<{ site
   const resolvedParams = await params; 
   const supabase = await createClient();
 
-  // ✅ 2. UPDATE QUERY: Join categories(name, slug)
+  // 2. Fetch Data (Deep Join)
   const { data: storeRaw } = await supabase
     .from('stores')
     .select(`
@@ -57,53 +56,69 @@ export default async function StoreHomePage({ params }: { params: Promise<{ site
 
   if (!storeRaw) return notFound();
 
-  // 3. CAST DATA
-  // @ts-ignore - Supabase types struggle with complex deep joins sometimes
+  // 3. Cast Data
+  // @ts-ignore 
   const store = storeRaw as StoreData;
   const settings = (store.settings as Record<string, string>) || {};
 
-  // 4. ORGANIZE DATA
-  const activeBanners = store.banners.filter(b => b.is_active);
+  // 4. Organize Content
+  const activeBanners = store.banners?.filter(b => b.is_active) || [];
   const brandBanners = activeBanners.filter(b => b.slot === 'brand_hero');
   const heroGridBanners = activeBanners.filter(b => ['main_hero', 'side_top', 'side_bottom'].includes(b.slot));
   const branchBanners = activeBanners.filter(b => b.slot === 'branch_slider');
 
-  const featuredProducts = store.products
+  // Featured Products (Must be Active AND Featured)
+  const featuredProducts = (store.products || [])
     .filter(p => p.is_active && p.is_featured)
     .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
     .slice(0, 8);
 
-  // ✅ 5. FIX CATEGORY EXTRACTION
-  // Map over products and extract the JOINED name
+  // 5. Extract Unique Categories from Products
+  // We use this to dynamically build the rails
   const categories = Array.from(new Set(
-      store.products.map(p => p.categories?.name).filter(Boolean)
+      store.products?.map(p => p.categories?.name).filter(Boolean)
   )) as string[];
 
   return (
-    <div className="bg-[#F8FAFC] min-h-screen font-sans">
+    <div className="min-h-screen font-sans animate-in fade-in duration-500">
        <style>{`:root { --primary: ${settings.theme_color || '#f97316'}; }`}</style>
        
-       <Header settings={settings} categories={categories} />
+       {/* NOTE: <Header /> is removed because 'SiteLayout' already renders it.
+          This prevents the Double Header issue.
+       */}
 
-       <main className="pt-20 md:pt-28 space-y-0 md:space-y-2">
+       <main className="space-y-0 md:space-y-2">
+         {/* Hero Section */}
          <BrandHero banners={brandBanners} storeName={store.name} />
+         
          {heroGridBanners.length > 0 && <HeroGrid banners={heroGridBanners} />}
-         <FeaturedRow products={featuredProducts} />
          
-         {categories.slice(0, 3).map(cat => (
-            <CategoryRail 
-               key={cat} 
-               category={cat} 
-               // ✅ FIX FILTER: Match against joined name
-               products={store.products.filter(p => p.categories?.name === cat)} 
-            />
-         ))}
+         {/* Featured Row (Only shows if products exist) */}
+         {featuredProducts.length > 0 && (
+            <FeaturedRow products={featuredProducts} />
+         )}
          
-         <SocialGrid settings={settings} blocks={store.content_blocks} />
+         {/* Category Rails */}
+         {categories.length > 0 ? (
+            categories.slice(0, 4).map(cat => (
+               <CategoryRail 
+                  key={cat} 
+                  category={cat} 
+                  // Filter products by the joined Category Name
+                  products={store.products.filter(p => p.categories?.name === cat)} 
+               />
+            ))
+         ) : (
+            // Fallback State if no categories found (Empty State)
+            <div className="py-20 text-center text-slate-400">
+               <p>No products found. Add products and assign categories in the Admin Dashboard.</p>
+            </div>
+         )}
+         
+         <SocialGrid settings={settings} blocks={store.content_blocks || []} />
          <BranchSlider banners={branchBanners} settings={settings} />
          <RequestCTA settings={settings} />
        </main>
-
     </div>
   );
 }
