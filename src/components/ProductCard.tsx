@@ -1,17 +1,21 @@
 import React from 'react';
 import { Database } from '@/lib/database.types'; 
-import { slugify } from '@/lib/utils';
 import { ArrowRight, Tag, Sparkles, Zap } from 'lucide-react';
 import Link from 'next/link';
 
-// ✅ 1. Define Extended Type with Join
+// 1. Define Extended Type
 type ProductWithCategory = Database['public']['Tables']['products']['Row'] & {
   categories?: { name: string; slug: string } | null;
 };
 
-export const ProductCard = ({ product }: { product: ProductWithCategory }) => {
+interface ProductCardProps {
+  product: ProductWithCategory;
+  storeSlug?: string; // Optional: Pass this if you aren't using subdomains yet
+}
 
-  // ✅ 2. Safe Access to Category Name
+export const ProductCard = ({ product, storeSlug }: ProductCardProps) => {
+
+  // 2. Safe Access to Category Name
   const categoryName = product.categories?.name || 'Uncategorized';
 
   const getCategoryColor = (cat: string) => {
@@ -21,8 +25,15 @@ export const ProductCard = ({ product }: { product: ProductWithCategory }) => {
 
   const accentColorClass = getCategoryColor(categoryName);
 
+  // ✅ 3. URL CONSTRUCTION
+  // If storeSlug is provided: /nimde/product/iphone-13-pro-897
+  // If not: /product/iphone-13-pro-897 (Assumes middleware handles the store)
+  const productUrl = storeSlug 
+    ? `/${storeSlug}/product/${product.slug}` 
+    : `/product/${product.slug}`;
+
   return (
-    <Link href={`/product/${slugify(product.name)}`} className="group block h-full">
+    <Link href={productUrl} className="group block h-full">
       <div className="relative bg-white rounded-3xl p-3 md:p-4 h-full flex flex-col transition-all duration-500 ease-out border border-gray-100 hover:border-transparent hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] hover:-translate-y-2">
         
         {/* Floating Background Glow */}
@@ -60,7 +71,6 @@ export const ProductCard = ({ product }: { product: ProductWithCategory }) => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 uppercase tracking-wider">
                <Zap size={14} className={accentColorClass} fill="currentColor" fillOpacity={0.2} />
-               {/* ✅ Display Joined Name */}
                {categoryName}
             </div>
             {product.brand && (
