@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useEffect, useState, useTransition } from 'react';
+import React, { useEffect, useState, useTransition, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAdminData } from '@/hooks/useAdminData';
 import { Database } from '@/lib/database.types';
-import { Save, Loader2, Plus, Trash2, ListFilter, Tag } from 'lucide-react';
+import { Save, Loader2, Plus, Trash2, ListFilter, Tag, ChevronDown, Check } from 'lucide-react';
 import { toast } from 'sonner';
 
 type AttributeRow = Database['public']['Tables']['attribute_options']['Row'];
@@ -17,13 +17,17 @@ export default function AttributesPage() {
   
   // --- FORM STATE ---
   const [selectedCatId, setSelectedCatId] = useState<string>('');
-  const [attrKey, setAttrKey] = useState('');
-  const [attrValues, setAttrValues] = useState<string[]>(['']); // Array of inputs
   
+  // 1. UPDATED: Key State for "Choose or Create"
+  const [attrKey, setAttrKey] = useState('');
+  const [showKeySuggestions, setShowKeySuggestions] = useState(false);
+  const keyInputRef = useRef<HTMLInputElement>(null);
+
+  const [attrValues, setAttrValues] = useState<string[]>(['']); 
   const [loading, setLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
 
-  // 1. INITIAL LOAD
+  // 2. INITIAL LOAD
   useEffect(() => {
     if (!storeId) return;
     
@@ -41,11 +45,20 @@ export default function AttributesPage() {
     loadData();
   }, [storeId]);
 
-  // 2. INPUT HANDLERS (Add/Remove Lines)
-  const handleAddInput = () => {
-    setAttrValues([...attrValues, '']);
-  };
+  // 3. COMPUTE UNIQUE EXISTING KEYS
+  const existingKeys = useMemo(() => {
+    const keys = new Set(attributes.map(a => a.key)); // e.g. {"Color", "Size", "Material"}
+    return Array.from(keys).sort();
+  }, [attributes]);
 
+  // Filter keys based on user input
+  const filteredKeys = existingKeys.filter(k => 
+     k.toLowerCase().includes(attrKey.toLowerCase())
+  );
+
+  // 4. HANDLERS
+  const handleAddInput = () => setAttrValues([...attrValues, '']);
+  
   const handleRemoveInput = (index: number) => {
     const newValues = [...attrValues];
     newValues.splice(index, 1);
@@ -58,28 +71,34 @@ export default function AttributesPage() {
     setAttrValues(newValues);
   };
 
-  // 3. BULK SAVE ACTION
+  // Close suggestions when clicking outside (simple implementation using blur delay)
+  const handleBlur = () => {
+    setTimeout(() => setShowKeySuggestions(false), 200);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!storeId || !selectedCatId || !attrKey) {
-        toast.error("Please select a category and enter an attribute name");
+        toast.error("Please select a category and attribute name");
         return;
     }
 
-    // Filter out empty lines
     const validValues = attrValues.filter(v => v.trim() !== '');
     if (validValues.length === 0) {
         toast.error("Please add at least one value");
         return;
     }
 
+    // NORMALIZATION: Optionally Title Case the key to prevent "color" vs "Color"
+    // const cleanKey = attrKey.charAt(0).toUpperCase() + attrKey.slice(1);
+    const cleanKey = attrKey.trim();
+
     startTransition(async () => {
-        // Prepare bulk insert payload
         const payload = validValues.map((val, index) => ({
             store_id: storeId,
             category_id: selectedCatId,
-            key: attrKey,   // e.g. "Color"
-            value: val,     // e.g. "Red"
+            key: cleanKey,
+            value: val.trim(),
             sort_order: index
         }));
 
@@ -89,28 +108,19 @@ export default function AttributesPage() {
             .select();
 
         if (error) {
-            toast.error("Failed to add attributes: " + error.message);
+            toast.error(error.message);
         } else {
             setAttributes([...attributes, ...(data || [])]);
-            // Reset Values but keep Category/Key so you can keep working
             setAttrValues(['']); 
-            toast.success(`Added ${data.length} options for ${attrKey}`);
+            toast.success(`Added ${data.length} options for ${cleanKey}`);
         }
     });
   };
 
-  // 4. DELETE ATTRIBUTE
   const handleDelete = async (id: string) => {
-      // Optimistic Update
       setAttributes(prev => prev.filter(a => a.id !== id));
-      
-      const { error } = await supabase.from('attribute_options').delete().eq('id', id);
-      if (error) {
-          toast.error("Failed to delete");
-          // Revert if failed (optional, but good practice)
-      } else {
-          toast.success("Option deleted");
-      }
+      await supabase.from('attribute_options').delete().eq('id', id);
+      toast.success("Option deleted");
   };
 
   if (authLoading || loading) return <div className="h-[60vh] flex items-center justify-center"><Loader2 className="animate-spin text-slate-300" size={32}/></div>;
@@ -122,23 +132,23 @@ export default function AttributesPage() {
         <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
            <ListFilter className="text-indigo-600" /> Attribute Manager
         </h1>
-        <p className="text-slate-500 mt-1 font-medium">Define filters like Color, Size, and Material for your categories.</p>
+        <p className="text-slate-500 mt-1 font-medium">Define consistent filters like Size or Color for your products.</p>
       </div>
 
       <div className="grid lg:grid-cols-12 gap-8">
         
-        {/* === LEFT COLUMN: THE BULK CREATOR (Fixed Width) === */}
+        {/* === LEFT: BULK CREATOR === */}
         <div className="lg:col-span-4">
-            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm sticky top-6">
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm sticky top-6 z-20">
                 <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2 text-lg">
                     <Plus className="bg-indigo-100 text-indigo-600 p-1 rounded-md" size={24}/> 
-                    Add New Attributes
+                    Add Attributes
                 </h3>
 
                 <form onSubmit={handleSave} className="space-y-5">
-                    {/* Category Select */}
+                    {/* 1. Category */}
                     <div>
-                        <label className="text-xs font-bold text-slate-400 uppercase mb-1.5 block">1. Target Category</label>
+                        <label className="text-xs font-bold text-slate-400 uppercase mb-1.5 block">1. Category</label>
                         <div className="relative">
                             <select 
                                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold outline-none focus:border-indigo-500 appearance-none"
@@ -150,24 +160,64 @@ export default function AttributesPage() {
                                     <option key={c.id} value={c.id}>{c.name}</option>
                                 ))}
                             </select>
+                            <ChevronDown className="absolute right-3 top-3.5 text-slate-400 pointer-events-none" size={16}/>
                         </div>
                     </div>
 
-                    {/* Attribute Name */}
-                    <div>
+                    {/* 2. Attribute Name (AUTOCOMPLETE) */}
+                    <div className="relative">
                         <label className="text-xs font-bold text-slate-400 uppercase mb-1.5 block">2. Attribute Name</label>
-                        <input 
-                            placeholder="e.g. Color, RAM, Size"
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold outline-none focus:border-indigo-500 placeholder:font-normal"
-                            value={attrKey}
-                            onChange={(e) => setAttrKey(e.target.value)}
-                        />
+                        
+                        <div className="relative">
+                            <input 
+                                ref={keyInputRef}
+                                placeholder="Choose or Type (e.g. Color)"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold outline-none focus:border-indigo-500 placeholder:font-normal"
+                                value={attrKey}
+                                onChange={(e) => {
+                                    setAttrKey(e.target.value);
+                                    setShowKeySuggestions(true);
+                                }}
+                                onFocus={() => setShowKeySuggestions(true)}
+                                onBlur={handleBlur}
+                            />
+                            {/* Arrow Indicator to show it's a dropdown too */}
+                            <div className="absolute right-3 top-3.5 text-slate-400 pointer-events-none">
+                                {showKeySuggestions ? <ChevronDown size={16} className="rotate-180 transition"/> : <ChevronDown size={16} className="transition"/>}
+                            </div>
+                        </div>
+
+                        {/* SUGGESTIONS DROPDOWN */}
+                        {showKeySuggestions && (
+                            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto z-50 animate-in fade-in zoom-in-95 duration-100">
+                                {filteredKeys.length > 0 ? (
+                                    filteredKeys.map(key => (
+                                        <button
+                                            type="button"
+                                            key={key}
+                                            onClick={() => {
+                                                setAttrKey(key);
+                                                setShowKeySuggestions(false);
+                                            }}
+                                            className="w-full text-left px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors flex justify-between items-center"
+                                        >
+                                            {key}
+                                            {key === attrKey && <Check size={14} className="text-indigo-600"/>}
+                                        </button>
+                                    ))
+                                ) : (
+                                    <div className="px-4 py-3 text-xs text-slate-400 italic text-center">
+                                        "{attrKey}" will be created as new.
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
 
-                    {/* Dynamic Values */}
+                    {/* 3. Values */}
                     <div>
                         <label className="text-xs font-bold text-slate-400 uppercase mb-1.5 flex justify-between items-center">
-                            <span>3. Options (Values)</span>
+                            <span>3. Options</span>
                             <span className="text-[10px] bg-slate-100 text-slate-500 px-2 rounded-full py-0.5 font-bold">Bulk Add</span>
                         </label>
                         
@@ -176,7 +226,7 @@ export default function AttributesPage() {
                                 <div key={idx} className="flex gap-2 animate-in slide-in-from-left-2 duration-300">
                                     <input 
                                         autoFocus={idx === attrValues.length - 1 && idx > 0}
-                                        placeholder={`Value ${idx + 1}`}
+                                        placeholder={`Option ${idx + 1}`}
                                         className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-50 transition-all font-medium"
                                         value={val}
                                         onChange={(e) => handleValueChange(idx, e.target.value)}
@@ -215,19 +265,19 @@ export default function AttributesPage() {
                         className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold mt-4 hover:bg-slate-800 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
                     >
                         {isPending ? <Loader2 className="animate-spin" /> : <Save size={18} />}
-                        Save All Options
+                        Save All
                     </button>
                 </form>
             </div>
         </div>
 
-        {/* === RIGHT COLUMN: LIST VIEW (Fluid Width) === */}
+        {/* === RIGHT: LIST === */}
         <div className="lg:col-span-8 space-y-6">
             {categories.map(cat => {
                 const catAttrs = attributes.filter(a => a.category_id === cat.id);
                 if (catAttrs.length === 0) return null;
 
-                // Group by Key (e.g. Color: [Red, Blue])
+                // Group by Key
                 const grouped: Record<string, AttributeRow[]> = {};
                 catAttrs.forEach(a => {
                     if (!grouped[a.key]) grouped[a.key] = [];
@@ -272,7 +322,7 @@ export default function AttributesPage() {
                 <div className="text-center py-24 text-slate-400 border-2 border-dashed border-slate-100 rounded-3xl bg-slate-50/50">
                     <ListFilter size={48} className="mx-auto mb-4 opacity-20" />
                     <p className="font-medium text-lg text-slate-600">No attributes defined yet.</p>
-                    <p className="text-sm mt-1">Use the form on the left to start adding filters like Size or Color.</p>
+                    <p className="text-sm mt-1">Use the form on the left to start adding filters.</p>
                 </div>
             )}
         </div>
