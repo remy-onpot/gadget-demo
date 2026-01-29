@@ -151,7 +151,7 @@ export default async function SiteLayout({
         >
             {!isIsolatedPage && <Header settings={settings} categories={categories} />}
             
-            <main className="flex-grow">
+            <main className={`flex-grow ${!isIsolatedPage ? 'pt-[72px] md:pt-[80px]' : ''}`}>
               {children}
             </main>
 

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ShoppingCart, Menu, X, ArrowRight, Search } from 'lucide-react'; 
+import { ShoppingCart, Menu, X, ArrowRight, Search, User } from 'lucide-react'; 
 import { useStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { HeaderSearch } from './HeaderSearch'; 
@@ -31,25 +31,16 @@ export const Header = ({ settings, categories }: HeaderProps) => {
       className={cn(
         "fixed top-0 left-0 right-0 z-50 transition-all duration-300 ease-in-out border-b",
         isScrolled 
-          ? "border-black/5 shadow-sm py-3 backdrop-blur-md" 
-          : "border-transparent py-4 md:py-5 backdrop-blur-sm"
+          ? "border-black/10 shadow-lg py-3" 
+          : "border-white/10 py-4 md:py-5"
       )}
       style={{ 
-          // Dynamic Background with slight transparency using CSS color-mix if supported, 
-          // or falling back to the theme card color
-          backgroundColor: isScrolled ? 'var(--card-bg)' : 'transparent',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          backgroundColor: isScrolled ? 'rgba(255, 255, 255, 0.8)' : 'rgba(255, 255, 255, 0.6)',
           color: 'var(--text-main)'
       }}
     >
-      {/* If transparent at top, we might need a gradient overlay or ensure text is readable. 
-          For safety in a "No-Code" tool, we usually force a background or ensure contrast. 
-          Let's enforce card-bg background on scroll, and transparent at top assuming hero image? 
-          Actually, safer to always have background for readability unless configured otherwise.
-      */}
-      <div 
-        className="absolute inset-0 -z-10 opacity-95" 
-        style={{ backgroundColor: 'var(--card-bg)' }} 
-      />
 
       <div className="container mx-auto px-4 flex items-center justify-between gap-4">
         
@@ -75,12 +66,23 @@ export const Header = ({ settings, categories }: HeaderProps) => {
         </div>
 
         {/* ACTIONS */}
-        <div className="flex items-center gap-3 z-50">
+        <div className="flex items-center gap-2 md:gap-3 z-50">
+           <Link 
+             href="/account" 
+             className="relative p-2.5 rounded-full transition-all group hover:scale-105"
+             style={{ 
+                 backgroundColor: 'rgba(0, 0, 0, 0.05)',
+                 color: 'var(--text-main)'
+             }}
+           >
+             <User size={20} className="group-hover:scale-110 transition-transform" />
+           </Link>
+
            <Link 
              href="/cart" 
-             className="relative p-2.5 rounded-full transition-colors group"
+             className="relative p-2.5 rounded-full transition-all group hover:scale-105"
              style={{ 
-                 backgroundColor: 'var(--page-bg)', // Slight contrast from header
+                 backgroundColor: 'rgba(0, 0, 0, 0.05)',
                  color: 'var(--text-main)'
              }}
            >
@@ -108,8 +110,13 @@ export const Header = ({ settings, categories }: HeaderProps) => {
       {/* MOBILE MENU */}
       {mobileMenuOpen && (
         <div 
-            className="absolute top-full left-0 w-full h-screen border-t border-black/5 p-6 flex flex-col gap-6 md:hidden shadow-xl animate-in fade-in duration-200"
-            style={{ backgroundColor: 'var(--card-bg)', color: 'var(--text-main)' }}
+            className="absolute top-full left-0 w-full h-screen border-t border-white/10 p-6 flex flex-col gap-6 md:hidden shadow-xl animate-in fade-in duration-200"
+            style={{ 
+              backgroundColor: 'rgba(255, 255, 255, 0.95)', 
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              color: 'var(--text-main)' 
+            }}
         >
            <div className="w-full">
               <HeaderSearch isMobile={true} onClose={() => setMobileMenuOpen(false)} whatsappNumber={settings['whatsapp_phone']} />
