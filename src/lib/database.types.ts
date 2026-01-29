@@ -353,6 +353,47 @@ export type Database = {
           },
         ]
       }
+      expert_requests: {
+        Row: {
+          budget: string | null
+          contact_phone: string | null
+          created_at: string | null
+          id: string
+          requester_id: string
+          service_type: string
+          status: string | null
+          store_id: string
+        }
+        Insert: {
+          budget?: string | null
+          contact_phone?: string | null
+          created_at?: string | null
+          id?: string
+          requester_id: string
+          service_type: string
+          status?: string | null
+          store_id: string
+        }
+        Update: {
+          budget?: string | null
+          contact_phone?: string | null
+          created_at?: string | null
+          id?: string
+          requester_id?: string
+          service_type?: string
+          status?: string | null
+          store_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expert_requests_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feed_configs: {
         Row: {
           created_at: string | null
@@ -740,6 +781,38 @@ export type Database = {
           },
           {
             foreignKeyName: "reviews_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_members: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: string | null
+          store_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role?: string | null
+          store_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: string | null
+          store_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_members_store_id_fkey"
             columns: ["store_id"]
             isOneToOne: false
             referencedRelation: "stores"

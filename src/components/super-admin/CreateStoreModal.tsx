@@ -202,7 +202,7 @@ export function CreateStoreModal({ isOpen, onClose }: { isOpen: boolean; onClose
                     <div className="space-y-1">
                        <label className="text-xs font-bold text-slate-500 uppercase">Billing Plan</label>
                        <select name="plan" value={formData.plan} onChange={handleChange} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:outline-none focus:border-indigo-500">
-                          <option value="starter">Starter (₵175 / mo)</option>
+                          <option value="starter">Starter (₵250 / mo)</option>
                           <option value="growth">Growth (₵450 / mo)</option>
                           <option value="enterprise">Enterprise (Custom)</option>
                        </select>

@@ -13,7 +13,8 @@ import {
   LayoutGrid,
   Menu, 
   X,
-  User // Added User icon
+  User,
+  Users // Added Users icon for Team
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -81,6 +82,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <NavItem onClick={() => setIsMobileOpen(false)} href="/admin/banners" active={pathname === '/admin/banners'} icon={<ImageIcon size={20} />} label="Banners" />
           <NavItem onClick={() => setIsMobileOpen(false)} href="/admin/grid" active={pathname === '/admin/grid'} icon={<LayoutGrid size={20} />} label="Home Grid" />
           <NavItem onClick={() => setIsMobileOpen(false)} href="/admin/layouts" active={pathname === '/admin/layouts'} icon={<Layers size={20} />} label="Category Layouts" />
+          <NavItem onClick={() => setIsMobileOpen(false)} href="/admin/settings/theme" active={pathname === '/admin/settings/theme'} icon={<Sliders size={20} />} label="Theme" />
           <NavItem onClick={() => setIsMobileOpen(false)} href="/admin/settings" active={pathname === '/admin/settings'} icon={<Settings size={20} />} label="Site Settings" />
 
           {/* NEW SECTION: SYSTEM */}
@@ -91,6 +93,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             active={pathname === '/admin/account'} 
             icon={<User size={20} />} 
             label="My Account" 
+          />
+          <NavItem 
+            onClick={() => setIsMobileOpen(false)} 
+            href="/admin/team" 
+            active={pathname === '/admin/team'} 
+            icon={<Users size={20} />} 
+            label="Team" 
           />
         </nav>
 

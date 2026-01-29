@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { Rotate3D, Image as ImageIcon } from 'lucide-react';
-import { Product360View } from './Product360View';
+import { Product360Viewer } from '@/components/shop/Product360Viewer';
 
 interface GalleryProps {
   images: string[];
@@ -22,8 +22,8 @@ export const ProductGallery = ({ images, frames360 }: GalleryProps) => {
   return (
     <div className="flex flex-col gap-4">
       {/* Main Viewport */}
-      {viewMode === '360' && frames360 ? (
-        <Product360View frames={frames360} />
+      {viewMode === '360' && frames360 && frames360.length > 0 ? (
+        <Product360Viewer frames={frames360} />
       ) : (
         <div className="relative aspect-square md:aspect-[4/3] w-full bg-white rounded-3xl border border-gray-100 overflow-hidden group">
           <Image 

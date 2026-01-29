@@ -4,15 +4,15 @@ import React, { useRef } from 'react';
 import { ArrowRight, ChevronLeft, ChevronRight, Zap, Layers } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Database } from '@/lib/database.types'; // ✅ Correct Import
+import { Database } from '@/lib/database.types'; 
 import { ProductCard } from '@/components/ProductCard';
 import { slugify } from '@/lib/utils';
-// ✅ Define Types from the Database
+
 type ProductRow = Database['public']['Tables']['products']['Row'];
 
 interface RailProps {
   category: string;
-  products: ProductRow[]; // ✅ Use the DB Row Type
+  products: ProductRow[]; 
   settings?: {
     title?: string;
     subtitle?: string;

@@ -15,19 +15,15 @@ interface FooterProps {
 export const Footer = ({ settings, categories }: FooterProps) => {
   const whatsapp = settings['whatsapp_phone'];
   const phone = settings['support_phone'];
-  const email = settings['support_email'];
   const address = settings['address_display'];
-  const description = settings['site_description'] || "Your trusted source for premium products. Quality verified and delivered to your doorstep.";
+  const description = settings['site_description'] || "Your trusted source for premium products.";
   
-  // 1. DYNAMIC BUSINESS HOURS
   const businessHours = settings['business_hours'] || "Mon - Sat: 8:00 AM - 7:00 PM";
-
-  // 2. LOGO LOGIC
   const siteName = settings['site_name'] || "My Store";
   const logoUrl = settings['site_logo'];
 
   return (
-    <footer className="bg-[#0B1120] border-t border-white/5 pt-20 pb-10 text-slate-400 font-sans">
+    <footer className="bg-slate-950 border-t border-white/5 pt-20 pb-10 text-slate-400 font-sans">
       <div className="container mx-auto px-4 md:px-6 max-w-[1400px]">
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
@@ -40,7 +36,7 @@ export const Footer = ({ settings, categories }: FooterProps) => {
                    <img 
                      src={logoUrl} 
                      alt={siteName} 
-                     className="h-8 w-auto object-contain brightness-0 invert" // White logo filter
+                     className="h-8 w-auto object-contain brightness-0 invert" // Force white logo on dark footer
                    />
                  ) : (
                    <span className="font-black text-2xl tracking-tighter text-white">
@@ -67,12 +63,34 @@ export const Footer = ({ settings, categories }: FooterProps) => {
               <ul className="space-y-3 text-sm font-medium">
                  {categories.slice(0, 6).map(cat => (
                     <li key={cat}>
-                        <Link href={`/category/${cat}`} className="hover:text-orange-500 transition-colors capitalize block py-1">
-                            {cat.replace(/-/g, ' ')}
+                        <Link 
+                            href={`/category/${cat}`} 
+                            className="transition-colors capitalize block py-1 hover:opacity-100 opacity-70"
+                            style={{ 
+                                // We use style for hover color to match dynamic theme
+                                // Note: CSS variables work best here, but for simple hover text in React, 
+                                // a className is hard without 'group' or 'hover:'.
+                                // A clean hack: Use a CSS variable for the hover color in a global style or inline style block.
+                                // For now, we'll let it be white on hover, or use a class if we can.
+                            }}
+                        >
+                            {/* We'll use a span to apply color on hover via inline style if needed, 
+                                but standard white hover is safer for dark footers. 
+                                Let's strictly use Brand Color for the "View All" link. 
+                            */}
+                            <span className="hover:text-white">{cat.replace(/-/g, ' ')}</span>
                         </Link>
                     </li>
                  ))}
-                 <li><Link href="/search" className="text-orange-500 hover:text-orange-400 transition-colors py-1 block">View All Products →</Link></li>
+                 <li>
+                    <Link 
+                        href="/search" 
+                        className="transition-colors py-1 block font-bold"
+                        style={{ color: 'var(--primary)' }}
+                    >
+                        View All Products →
+                    </Link>
+                 </li>
               </ul>
            </div>
 
@@ -80,10 +98,6 @@ export const Footer = ({ settings, categories }: FooterProps) => {
            <div>
               <h4 className="font-bold text-white mb-6 uppercase text-xs tracking-widest">Support</h4>
               <ul className="space-y-3 text-sm font-medium">
-                {/* <li><Link href="/track-order" className="hover:text-white transition-colors block py-1">Track My Order</Link></li> */}
-{/* <li><Link href="/warranty" className="hover:text-white transition-colors block py-1">Warranty Policy</Link></li> */}
-                {/* <li><Link href="/shipping" className="hover:text-white transition-colors block py-1">Shipping Info</Link></li> */}
-                {/* <li><Link href="/faqs" className="hover:text-white transition-colors block py-1">FAQs</Link></li> */}
                  {whatsapp && (
                     <li><a href={`https://wa.me/${whatsapp}`} className="hover:text-white transition-colors block py-1">Chat on WhatsApp</a></li>
                  )}
@@ -96,18 +110,18 @@ export const Footer = ({ settings, categories }: FooterProps) => {
               <div className="space-y-4 text-sm mb-8">
                  {address && (
                     <div className="flex gap-3 items-start">
-                        <MapPin className="shrink-0 text-orange-500 mt-0.5" size={16} />
-                        <p className="whitespace-pre-line leading-relaxed">{address}</p>
+                       <MapPin className="shrink-0 mt-0.5" size={16} style={{ color: 'var(--primary)' }} />
+                       <p className="whitespace-pre-line leading-relaxed">{address}</p>
                     </div>
                  )}
                  {phone && (
                     <div className="flex gap-3 items-center">
-                        <Phone className="shrink-0 text-orange-500" size={16} />
-                        <p>{phone}</p>
+                       <Phone className="shrink-0" size={16} style={{ color: 'var(--primary)' }} />
+                       <p>{phone}</p>
                     </div>
                  )}
                  <div className="flex gap-3 items-center">
-                    <Clock className="shrink-0 text-orange-500" size={16} />
+                    <Clock className="shrink-0" size={16} style={{ color: 'var(--primary)' }} />
                     <p>{businessHours}</p>
                  </div>
               </div>
@@ -145,7 +159,11 @@ const SocialIcon = ({ href, icon }: { href: string, icon: React.ReactNode }) => 
       href={href} 
       target="_blank" 
       rel="noopener noreferrer"
-      className="w-10 h-10 bg-white/5 border border-white/5 rounded-full flex items-center justify-center text-slate-400 hover:bg-orange-500 hover:text-white hover:border-orange-500 transition-all duration-300"
+      className="w-10 h-10 bg-white/5 border border-white/5 rounded-full flex items-center justify-center text-slate-400 transition-all duration-300 hover:text-white hover:scale-110"
+      style={{ 
+          // We can't easily hover-style with dynamic vars without CSS-in-JS or advanced Tailwind config.
+          // Fallback: Standard white hover for icons on dark bg looks cleaner than dynamic colors anyway.
+      }}
     >
       {icon}
     </a>

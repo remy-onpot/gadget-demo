@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase-server';
 import { getActiveStore } from "@/lib/services/admin-auth";
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { Database } from '@/lib/database.types';
 import { redirect } from 'next/navigation';
 
@@ -121,6 +121,8 @@ export async function updateStoreSettings(newSettings: Record<string, any>) {
 
   if (error) throw new Error(error.message);
 
+  // ✅ Invalidate store-specific cache for instant storefront updates
+  revalidateTag(`store-data-${store.id}`, 'default');
   revalidatePath('/admin/settings');
   return { success: true };
 }
@@ -261,6 +263,8 @@ export async function updateCategoryMeta(data: any[]) {
        .eq('slug', row.slug);
   }
    
+  // ✅ Invalidate cache since categories appear in header/footer navigation
+  revalidateTag(`store-data-${store.id}`, 'default');
   revalidatePath('/admin/layouts');
   return { success: true };
 }

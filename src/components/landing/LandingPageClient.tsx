@@ -98,7 +98,7 @@ export default function LandingPageClient() {
               <span className="text-slate-200 block mt-2">No payment gateways. No tech headaches. start with ₵0 today.</span>
             </motion.p>
             <motion.div variants={fadeUp} className="flex flex-col sm:flex-row items-center justify-center gap-5 pt-8">
-              <GetStartedButton text="Own a Store For ₵175/mo" className="w-full sm:w-auto min-w-[240px] h-16 text-lg bg-blue-600 hover:bg-blue-500 border-t border-white/20" />
+              <GetStartedButton text="Own a Store For ₵250/mo" className="w-full sm:w-auto min-w-[240px] h-16 text-lg bg-blue-600 hover:bg-blue-500 border-t border-white/20" />
               <Link href="https://nimde.nimdeshop.com" target="_blank" className="w-full sm:w-auto min-w-[200px] h-16 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md flex items-center justify-center gap-2 font-bold text-slate-200 hover:bg-white/10 transition-all shadow-lg group">
                 View Demo Store <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
               </Link>
@@ -238,7 +238,7 @@ export default function LandingPageClient() {
                <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-[#25D366] rounded-[2rem] blur opacity-30 group-hover:opacity-50 transition duration-1000" />
                <div className="relative bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-12 md:p-16 shadow-2xl">
                   <div className="text-blue-400 font-bold mb-2 uppercase tracking-widest text-xs">Standard Plan</div>
-                  <div className="text-7xl font-black text-white mb-6">₵175<span className="text-2xl text-slate-500 font-bold">/mo</span></div>
+                  <div className="text-7xl font-black text-white mb-6">₵250<span className="text-2xl text-slate-500 font-bold">/mo</span></div>
                   <div className="grid grid-cols-2 gap-4 text-left max-w-sm mx-auto mb-10">
                       {['Unlimited Products', 'Custom Domain', 'Cart Recovery', 'Analytics'].map(f => (
                         <div key={f} className="flex items-center gap-2"><CheckCircle2 className="text-white shrink-0" size={16}/><span className="text-slate-300 text-sm">{f}</span></div>

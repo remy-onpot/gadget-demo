@@ -1,8 +1,9 @@
 'use server';
 
 import { createClient } from '@supabase/supabase-js';
+import { revalidateTag } from 'next/cache'; // ✅ Added for cache clearing
 
-// ✅ 1. Self-contained Admin Client (No external imports)
+// ✅ 1. Self-contained Admin Client
 function getAdminClient() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY is missing');
@@ -19,23 +20,11 @@ function getAdminClient() {
   );
 }
 
-// ✅ 2. Self-contained User Client (Preserved for future use)
-function getUserClient(accessToken: string) {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { 
-       global: { headers: { Authorization: `Bearer ${accessToken}` } }
-    }
-  );
-}
-
 export async function createStoreAndUser(formData: FormData) {
   console.log("⚡ Server Action Triggered: createStoreAndUser (KYC Mode)");
 
   try {
     // --- A. EXTRACT DATA ---
-    // Basics
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
     const storeName = formData.get('storeName') as string;
@@ -69,7 +58,6 @@ export async function createStoreAndUser(formData: FormData) {
     const userId = authData.user.id;
 
     // --- C. UPSERT PROFILE (KYC STEP) ---
-    // We update the profile immediately so we have their details on file
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .upsert({
@@ -77,46 +65,59 @@ export async function createStoreAndUser(formData: FormData) {
         full_name: legalName,
         email: email,
         phone: phone,
-        shipping_address: physicalAddress, // Standard field for location
-        // Note: Ensure you ran the SQL to add government_id/digital_address columns,
-        // otherwise, these specific lines might be ignored or cause a soft error depending on your PG settings.
-        // We are passing them just in case you added them.
-        // government_id: governmentId, 
-        // digital_address: digitalAddress
+        shipping_address: physicalAddress, 
       });
 
     if (profileError) {
        console.error("Profile Warning:", profileError); 
-       // We don't stop execution here, as the user exists, but we log the warning.
     }
 
     // --- D. CREATE STORE ---
     console.log(`[Admin] Provisioning store: ${storeName}`);
-    const { error: storeError } = await supabaseAdmin
+    const { data: storeData, error: storeError } = await supabaseAdmin
       .from('stores')
       .insert({
         name: storeName,
         slug: storeSlug,
-        owner_id: userId,
+        owner_id: userId, // Legacy reference (keep for safety)
         plan_id: plan,
         is_active: true,
         settings: { 
            theme_color: '#f97316',
-           // BACKUP: We store critical KYC info in settings JSON too, just to be safe
            kyc: {
               government_id: governmentId,
               gps_address: digitalAddress,
               physical_address: physicalAddress
            }
         }
-      });
+      })
+      .select('id') // Return ID for next step
+      .single();
 
-    if (storeError) {
+    if (storeError || !storeData) {
       console.error("Store Error:", storeError);
-      // Cleanup: Delete the user if store creation fails to avoid "orphan" accounts
-      await supabaseAdmin.auth.admin.deleteUser(userId);
-      return { error: `Store DB Error: ${storeError.message}` };
+      await supabaseAdmin.auth.admin.deleteUser(userId); // Cleanup
+      return { error: `Store DB Error: ${storeError?.message}` };
     }
+
+    // --- E. ✅ CRITICAL: ADD TO STORE MEMBERS ---
+    // This ensures they work with the new "Expert" system permissions
+    const { error: memberError } = await supabaseAdmin
+        .from('store_members')
+        .insert({
+            store_id: storeData.id,
+            user_id: userId,
+            role: 'owner'
+        });
+
+    if (memberError) {
+        console.error("Member Error:", memberError);
+        // We don't fail here, but we log it. You can manually fix via SQL if needed.
+    }
+
+    // --- F. CLEANUP & CACHE ---
+    // Clear cache so the new store appears in your dashboard list immediately
+    revalidateTag('stores-list', 'default'); 
 
     return { success: true, message: `Ecosystem deployed for ${legalName}!` };
 
@@ -134,8 +135,13 @@ export async function toggleStoreStatus(storeId: string, isActive: boolean) {
      .eq('id', storeId);
 
    if (error) return { error: error.message };
+   
+   // Clear cache so the status update reflects on the storefront
+   revalidateTag(`store-data-${storeId}`, 'default');
+   
    return { success: true };
 }
+
 export async function checkSlugAvailability(slug: string) {
   const supabaseAdmin = getAdminClient();
   
@@ -145,6 +151,5 @@ export async function checkSlugAvailability(slug: string) {
     .eq('slug', slug)
     .single();
 
-  // If we found a store, the slug is taken (available = false)
   return { available: !data };
 }

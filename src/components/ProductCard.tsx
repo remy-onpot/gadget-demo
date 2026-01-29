@@ -2,6 +2,8 @@ import React from 'react';
 import { Database } from '@/lib/database.types'; 
 import { ArrowRight, Tag, Sparkles, Zap } from 'lucide-react';
 import Link from 'next/link';
+// ✅ Import the Hue Generator for harmonious category colors
+import { getCategoryHue } from '@/lib/theme-generator';
 
 // 1. Define Extended Type
 type ProductWithCategory = Database['public']['Tables']['products']['Row'] & {
@@ -10,37 +12,58 @@ type ProductWithCategory = Database['public']['Tables']['products']['Row'] & {
 
 interface ProductCardProps {
   product: ProductWithCategory;
-  storeSlug?: string; // Optional: Pass this if you aren't using subdomains yet
+  storeSlug?: string; 
 }
 
 export const ProductCard = ({ product, storeSlug }: ProductCardProps) => {
 
-  // 2. Safe Access to Category Name
   const categoryName = product.categories?.name || 'Uncategorized';
-
-  const getCategoryColor = (cat: string) => {
-    const colors = ['text-blue-500', 'text-orange-500', 'text-purple-500', 'text-green-500', 'text-pink-500'];
-    return colors[cat.length % colors.length];
-  };
-
-  const accentColorClass = getCategoryColor(categoryName);
-
-  // ✅ 3. URL CONSTRUCTION
-  // If storeSlug is provided: /nimde/product/iphone-13-pro-897
-  // If not: /product/iphone-13-pro-897 (Assumes middleware handles the store)
+  
+  // ✅ PHASE 4: Dynamic Hue Rotation
+  // This generates a unique color rotation (0-360) based on the category name strings.
+  // It ensures categories look distinct but share the same saturation/lightness as your brand color.
+  const hueRotate = getCategoryHue(categoryName); 
+  
   const productUrl = storeSlug 
     ? `/${storeSlug}/product/${product.slug}` 
     : `/product/${product.slug}`;
 
   return (
     <Link href={productUrl} className="group block h-full">
-      <div className="relative bg-white rounded-3xl p-3 md:p-4 h-full flex flex-col transition-all duration-500 ease-out border border-gray-100 hover:border-transparent hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] hover:-translate-y-2">
+      {/* CARD CONTAINER */}
+      <div 
+        className="relative p-2 md:p-4 h-full flex flex-col transition-all duration-500 ease-out border border-gray-100/50 hover:border-transparent hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] hover:-translate-y-2 overflow-hidden"
+        style={{ 
+            backgroundColor: 'var(--card-bg)', 
+            borderRadius: 'var(--radius)',
+            // We use a transparent shadow by default so the transition is smooth
+            boxShadow: '0 0 0 1px transparent' 
+        }}
+      >
         
-        {/* Floating Background Glow */}
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 to-white rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+        {/* ✅ GAP 4 FIX: Brand-Colored Hover Border/Glow */}
+        {/* This lights up the border with the brand color (at 20% opacity) on hover */}
+        <div 
+            className="absolute inset-0 border-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-20"
+            style={{ 
+                borderColor: 'var(--primary-20)', 
+                borderRadius: 'var(--radius)',
+                boxShadow: 'inset 0 0 20px var(--primary-10)' // Subtle inner glow
+            }}
+        />
+
+        {/* Floating Background Glow (Generic) */}
+        <div 
+            className="absolute inset-0 bg-gradient-to-br from-slate-50 to-white opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" 
+            style={{ borderRadius: 'var(--radius)' }}
+        />
 
         {/* IMAGE CONTAINER */}
-        <div className="relative h-50 md:h-52 bg-gray-50/80 rounded-2xl mb-4 overflow-hidden flex items-center justify-center group-hover:bg-white transition-colors z-10">
+        {/* We use calc() to make the inner radius slightly smaller for a perfect nested look */}
+        <div 
+            className="relative h-40 md:h-52 bg-gray-50/50 mb-3 md:mb-4 overflow-hidden flex items-center justify-center group-hover:bg-white/80 transition-colors z-10"
+            style={{ borderRadius: 'calc(var(--radius) / 1.5)' }}
+        >
           {product.base_images?.[0] ? (
              // eslint-disable-next-line @next/next/no-img-element
              <img 
@@ -57,7 +80,13 @@ export const ProductCard = ({ product, storeSlug }: ProductCardProps) => {
           
           <div className="absolute top-2 left-2 flex flex-col gap-1">
             {product.is_featured && (
-              <span className="bg-orange-500 text-white text-[9px] md:text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider shadow-sm flex items-center gap-1">
+              <span 
+                className="text-white text-[9px] md:text-[10px] font-bold px-2 py-1 uppercase tracking-wider shadow-sm flex items-center gap-1"
+                style={{ 
+                    backgroundColor: 'var(--primary)',
+                    borderRadius: 'calc(var(--radius) / 2)'
+                }}
+              >
                 <Sparkles size={8} fill="currentColor"/> Featured
               </span>
             )}
@@ -65,42 +94,71 @@ export const ProductCard = ({ product, storeSlug }: ProductCardProps) => {
         </div>
 
         {/* CONTENT */}
-        <div className="relative z-10 flex-1 flex flex-col space-y-3">
+        <div className="relative z-10 flex-1 flex flex-col space-y-2 md:space-y-3">
           
-          {/* Category Tag */}
+          {/* ✅ DYNAMIC CATEGORY BADGE */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 uppercase tracking-wider">
-               <Zap size={14} className={accentColorClass} fill="currentColor" fillOpacity={0.2} />
-               {categoryName}
+            <div 
+                className="flex items-center gap-1 text-[10px] md:text-xs font-bold uppercase tracking-wider px-1.5 md:px-2 py-0.5 md:py-1 rounded-md"
+                style={{ 
+                    // Magic: Take primary color, rotate hue, lower opacity for bg
+                    color: 'var(--primary)', 
+                    backgroundColor: 'var(--primary-10)', // Uses the 10% opacity var from layout
+                    filter: `hue-rotate(${hueRotate}deg)` 
+                }}
+            >
+               <Zap size={12} className="md:hidden" fill="currentColor" fillOpacity={0.2} />
+               <Zap size={14} className="hidden md:block" fill="currentColor" fillOpacity={0.2} />
+               <span className="truncate max-w-[80px] md:max-w-none">{categoryName}</span>
             </div>
             {product.brand && (
-              <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
+              <span className="text-[9px] md:text-[10px] font-bold opacity-50 px-1.5 md:px-2 py-0.5 border border-current rounded-full">
                 {product.brand}
               </span>
             )}
           </div>
 
-          <h3 className="font-bold text-slate-900 leading-snug text-sm md:text-base line-clamp-2 min-h-[2.5rem] group-hover:text-[#0A2540] transition-colors">
+          <h3 className="font-bold text-slate-900 leading-snug text-xs md:text-base line-clamp-2 min-h-[2rem] md:min-h-[2.5rem] opacity-90 group-hover:opacity-100 transition-opacity">
             {product.name}
           </h3>
 
-          <div className="bg-slate-50 group-hover:bg-white group-hover:shadow-sm border border-transparent group-hover:border-gray-100 transition-all rounded-lg px-2.5 py-2 text-xs font-medium text-slate-500 flex items-center gap-2">
-            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${accentColorClass.replace('text-', 'bg-')}`} />
-            <span className="truncate">{product.description || 'Premium Quality'}</span>
+          {/* ✅ SMART TINTED DESCRIPTION BOX */}
+          <div 
+            className="transition-all rounded-lg px-2 md:px-2.5 py-1.5 md:py-2 text-[10px] md:text-xs font-medium flex items-center gap-1.5 md:gap-2"
+            style={{
+                backgroundColor: 'var(--primary-10)', // Matches brand color (light tint)
+                color: 'var(--text-main)', 
+            }}
+          >
+            <div 
+                className="w-1 h-1 md:w-1.5 md:h-1.5 rounded-full flex-shrink-0" 
+                style={{ backgroundColor: 'var(--primary)' }}
+            />
+            <span className="truncate opacity-70">{product.description || 'Premium Quality'}</span>
           </div>
 
-          <div className="mt-auto pt-3 flex items-end justify-between border-t border-gray-50/50">
+          <div className="mt-auto pt-2 md:pt-3 flex items-end justify-between border-t border-gray-100/10">
             <div>
               <div className="flex items-baseline gap-0.5">
-                  <span className="text-xs font-medium text-slate-400 mr-1">from</span>
-                  <span className="text-lg md:text-xl font-black text-slate-900">
+                  <span className="text-[10px] md:text-xs font-medium opacity-50 mr-0.5 md:mr-1">from</span>
+                  <span className="text-base md:text-xl font-black text-slate-900">
                     ₵{(product.base_price || 0).toLocaleString()}
                   </span>
               </div>
             </div>
 
-            <div className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-slate-100 text-slate-900 flex items-center justify-center group-hover:bg-slate-900 group-hover:text-white transition-all duration-300 shadow-sm group-hover:shadow-lg group-hover:scale-110">
-              <ArrowRight size={18} />
+            {/* ✅ ACTION BUTTON WITH GLOW */}
+            <div 
+                className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center text-white shadow-sm transition-all duration-300 relative overflow-hidden group-hover:shadow-lg group-hover:scale-110"
+                style={{ 
+                    backgroundColor: 'var(--primary)', 
+                    borderRadius: 'calc(var(--radius) / 2)'
+                }}
+            >
+              {/* Internal glow effect on hover */}
+              <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"/>
+              <ArrowRight size={16} className="relative z-10 md:hidden"/>
+              <ArrowRight size={18} className="relative z-10 hidden md:block"/>
             </div>
           </div>
         </div>

@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase-server';
+import { revalidateTag } from 'next/cache';
 
 // 1. Fetch All Categories (For Dropdowns)
 export async function getCategories(storeId: string) {
@@ -29,5 +30,9 @@ export async function createCategory(name: string, storeId: string) {
     .single();
 
   if (error) throw new Error(error.message);
+  
+  // ✅ Invalidate cache to update header/footer navigation
+  revalidateTag(`store-data-${storeId}`, 'default');
+  
   return data;
 }

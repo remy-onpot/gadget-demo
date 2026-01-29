@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Upload, Loader2, Trash2, 
   CheckCircle, Sparkles, Tag, Package, 
-  TrendingUp, ChevronRight, Image as ImageIcon, FileText, Lock
+  TrendingUp, ChevronRight, Image as ImageIcon, FileText, Lock, Lightbulb
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { upsertProduct } from '@/actions/product-actions';
@@ -12,6 +12,7 @@ import { useAdminRole } from '@/hooks/useAdminRole';
 import { useAdminData } from '@/hooks/useAdminData';
 import { Database } from '@/lib/database.types';
 import { toast } from 'sonner';
+import { VideoTo360Uploader } from '@/components/product/VideoTo360Uploader';
 
 // TYPES
 type ProductRow = Database['public']['Tables']['products']['Row'];
@@ -346,6 +347,59 @@ export const ProductForm = ({ onClose, initialData }: ProductFormProps) => {
                     <h3 className="font-black text-xs text-slate-900 uppercase tracking-widest flex items-center gap-2"><ImageIcon size={16} className="text-blue-600"/> Media</h3>
                     <span className="text-[10px] font-bold bg-slate-100 px-2 py-1 rounded text-slate-500">{images.length} Added</span>
                   </div>
+
+                  {/* 💡 Pro Tips Section */}
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-4 mb-6">
+                    <div className="flex items-start gap-3">
+                      <div className="bg-blue-500 p-1.5 rounded-lg flex-shrink-0">
+                        <Lightbulb size={16} className="text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-blue-900 text-sm mb-2">Pro Tips for Best Results</h4>
+                        <ul className="space-y-1.5 text-xs text-blue-800">
+                          <li className="flex items-start gap-2">
+                            <span className="text-blue-500 mt-0.5">•</span>
+                            <span><strong>360° Video:</strong> Place product on a turntable, keep camera steady, rotate smoothly in 10-20 seconds</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-blue-500 mt-0.5">•</span>
+                            <span><strong>Lighting:</strong> Use natural light or soft white lights from multiple angles to avoid harsh shadows</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-blue-500 mt-0.5">•</span>
+                            <span><strong>Background:</strong> Plain white/light gray backgrounds make products pop and look professional</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-blue-500 mt-0.5">•</span>
+                            <span><strong>Resolution:</strong> 1080p is perfect - higher resolutions slow down page load times</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ✨ 360° VIDEO UPLOADER (Optional) */}
+                  <div className="mb-6">
+  {initialData?.id && storeId ? (
+    <VideoTo360Uploader 
+      storeId={storeId}
+      productId={initialData.id}
+      onSuccess={() => toast.success("360° view added successfully!")}
+    />
+  ) : (
+    <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl p-6 text-center">
+      <div className="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400">
+        <Sparkles size={20} />
+      </div>
+      <h4 className="font-bold text-slate-700">360° Video Feature</h4>
+      <p className="text-xs text-slate-500 mt-1">
+        Please <strong>save this product</strong> first to upload a 360° video.
+      </p>
+    </div>
+  )}
+</div>
+
+                  {/* Standard Image Upload */}
                   <div 
                     className={`border-2 border-dashed rounded-xl p-8 mb-6 text-center cursor-pointer transition-all ${dragActive ? 'border-blue-500 bg-blue-50' : 'border-slate-300 hover:border-blue-400'}`}
                     onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
