@@ -31,8 +31,8 @@ export default function ExpertsPage() {
   // Service packages with pricing
   const PACKAGES = {
     setup: { title: 'Full Store Setup', price: 250, platformFee: 50, expertPayout: 200 },
-    products: { title: 'With Product Upload', price: 400, platformFee: 100, expertPayout: 350 },
-    design: { title: 'Theme Customization', price: 450, platformFee: 100, expertPayout: 450 },
+    products: { title: 'With Product Upload', price: 400, platformFee: 100, expertPayout: 300 },
+    design: { title: 'Theme Customization', price: 450, platformFee: 100, expertPayout: 350 },
   };
 
   const specialtyLabels: Record<string, string> = {
