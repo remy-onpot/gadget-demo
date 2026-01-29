@@ -14,7 +14,8 @@ import {
   Menu, 
   X,
   User,
-  Users // Added Users icon for Team
+  Users,
+  RefreshCw // Added for Switch Store icon
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -103,7 +104,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           />
         </nav>
 
-        <div className="p-4 border-t border-slate-700">
+        <div className="p-4 border-t border-slate-700 space-y-2">
+          <Link 
+            href="/admin/select-store"
+            className="flex items-center gap-3 text-gray-400 hover:text-white transition w-full p-2 rounded-lg hover:bg-white/5"
+          >
+            <RefreshCw size={20} /> Switch Store
+          </Link>
           <button className="flex items-center gap-3 text-gray-400 hover:text-white transition w-full p-2 rounded-lg hover:bg-white/5">
             <LogOut size={20} /> Logout
           </button>

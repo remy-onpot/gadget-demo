@@ -8,13 +8,14 @@ import { Users, ShieldAlert, Trash2, Mail, Shield, X, UserPlus } from 'lucide-re
 import { useAdminRole } from '@/hooks/useAdminRole';
 import { toast } from 'sonner';
 import { inviteTeamMember, removeTeamMember } from '@/actions/team-actions';
+import { fetchTeamMembers } from '@/actions/team-fetch-actions';
 import { PLANS, PlanId } from '@/lib/plans';
 
 type TeamMember = {
   id: string;
   user_id: string;
-  role: string;
-  created_at: string;
+  role: string | null;
+  created_at: string | null;
   email: string;
   full_name: string | null;
 };
@@ -52,35 +53,13 @@ export default function TeamPage() {
     if (!storeId) return;
     
     try {
-        // Fetch from store_members with profile join
-        const { data, error } = await supabase
-            .from('store_members')
-            .select(`
-              id,
-              user_id,
-              role,
-              created_at,
-              profiles!inner(
-                email,
-                full_name
-              )
-            `)
-            .eq('store_id', storeId)
-            .order('created_at', { ascending: false });
-            
-        if (error) throw error;
+        const result = await fetchTeamMembers(storeId);
         
-        // Flatten the data structure
-        const members = (data || []).map((member: any) => ({
-          id: member.id,
-          user_id: member.user_id,
-          role: member.role,
-          created_at: member.created_at,
-          email: member.profiles?.email || 'No email',
-          full_name: member.profiles?.full_name
-        }));
-        
-        setTeam(members);
+        if (result.success && result.data) {
+          setTeam(result.data);
+        } else {
+          toast.error(result.error || "Failed to load team");
+        }
     } catch (e) {
         console.error(e);
         toast.error("Failed to load team members");

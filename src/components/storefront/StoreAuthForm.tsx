@@ -44,7 +44,23 @@ function AuthContent({ storeName, storeLogo }: StoreAuthFormProps) {
           },
         });
 
-        if (error) throw error;
+        if (error) {
+          // 🎯 SMART ERROR HANDLING: Detect "User already exists" error
+          if (error.message.toLowerCase().includes('already registered') || 
+              error.message.toLowerCase().includes('already exists') ||
+              error.message.toLowerCase().includes('already been registered')) {
+            
+            // Auto-switch to login mode
+            setIsSignUp(false);
+            setPassword(''); // Clear password for security
+            setMessage({ 
+              type: 'success', 
+              text: '✨ You already have a Nimde account! Please log in below.' 
+            });
+            return;
+          }
+          throw error;
+        }
         
         if (data.session) {
            router.refresh();
