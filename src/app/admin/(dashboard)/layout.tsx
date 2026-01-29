@@ -15,7 +15,8 @@ import {
   X,
   User,
   Users,
-  RefreshCw // Added for Switch Store icon
+  RefreshCw,
+  Briefcase // Added for Experts icon
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -101,6 +102,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             active={pathname === '/admin/team'} 
             icon={<Users size={20} />} 
             label="Team" 
+          />
+
+          {/* NEW SECTION: SERVICES */}
+          <p className="text-xs font-bold text-slate-500 uppercase px-4 mt-6 mb-1">Services</p>
+          <NavItem 
+            onClick={() => setIsMobileOpen(false)} 
+            href="/admin/experts" 
+            active={pathname === '/admin/experts'} 
+            icon={<Briefcase size={20} />} 
+            label="Hire Expert" 
           />
         </nav>
 

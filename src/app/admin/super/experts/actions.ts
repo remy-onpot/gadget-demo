@@ -4,7 +4,6 @@ import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 
 // ⚠️ SERVICE ROLE KEY REQUIRED (God Mode Access)
-// We use supabase-js directly to bypass any RLS middleware for these admin tasks
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!, 
@@ -16,37 +15,71 @@ const supabaseAdmin = createClient(
   }
 );
 
-// --- 1. CREATE EXPERT ACCOUNT ---
-export async function createExpertUser(email: string, fullName: string) {
-  // Generate a random temp password
-  const tempPassword = Math.random().toString(36).slice(-8) + "Aa1!";
-
-  // Create Auth User (Auto-verified)
-  const { data, error } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password: tempPassword,
-    email_confirm: true, 
-    user_metadata: { full_name: fullName, is_expert: true }
-  });
+// --- ASSIGN EXPERT TO REQUEST ---
+export async function assignExpertToRequest(requestId: string, expertId: string) {
+  const { error } = await supabaseAdmin
+    .from("expert_requests")
+    .update({ assigned_expert_id: expertId })
+    .eq("id", requestId);
 
   if (error) return { error: error.message };
 
-  // Create Profile
-  const { error: profileError } = await supabaseAdmin
-    .from('profiles')
-    .insert({
-       id: data.user.id,
-       email: email,
-       full_name: fullName,
-       role: 'expert' // Ensure your profiles table has this column or remove this line
-    });
+  revalidatePath("/admin/super/experts");
+  return { success: true };
+}
 
-  if (profileError) console.error("Profile creation warning:", profileError);
+// --- UPDATE REQUEST STATUS ---
+export async function updateRequestStatus(requestId: string, newStatus: string) {
+  const updates: any = { status: newStatus };
 
-  return { 
-    success: true, 
-    credentials: { email, password: tempPassword } 
-  };
+  // If completing, mark completion time
+  if (newStatus === "completed") {
+    updates.completed_at = new Date().toISOString();
+    // Also update payment status to released
+    updates.payment_status = "released_to_expert";
+  }
+
+  const { error } = await supabaseAdmin
+    .from("expert_requests")
+    .update(updates)
+    .eq("id", requestId);
+
+  if (error) return { error: error.message };
+
+  // If job completed, increment expert's job count
+  if (newStatus === "completed") {
+    const { data: request } = await supabaseAdmin
+      .from("expert_requests")
+      .select("assigned_expert_id")
+      .eq("id", requestId)
+      .single();
+
+    if (request?.assigned_expert_id) {
+      await supabaseAdmin.rpc("increment_expert_jobs", {
+        expert_id: request.assigned_expert_id,
+      });
+    }
+  }
+
+  revalidatePath("/admin/super/experts");
+  return { success: true };
+}
+
+// --- RECORD PAYMENT ---
+export async function recordPayment(requestId: string, paymentReference: string) {
+  const { error } = await supabaseAdmin
+    .from("expert_requests")
+    .update({
+      payment_status: "escrowed",
+      payment_reference: paymentReference,
+      status: "payment_received",
+    })
+    .eq("id", requestId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/admin/super/experts");
+  return { success: true };
 }
 
 // --- 2. ASSIGN EXPERT ---

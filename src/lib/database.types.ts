@@ -355,36 +355,77 @@ export type Database = {
       }
       expert_requests: {
         Row: {
+          assigned_expert_id: string | null
           budget: string | null
+          completed_at: string | null
+          completion_proof_url: string | null
           contact_phone: string | null
           created_at: string | null
+          expert_payout: number
           id: string
+          payment_reference: string | null
+          payment_status: string
+          platform_fee: number
           requester_id: string
+          selected_expert_id: string | null
           service_type: string
           status: string | null
           store_id: string
+          total_amount: number
         }
         Insert: {
+          assigned_expert_id?: string | null
           budget?: string | null
+          completed_at?: string | null
+          completion_proof_url?: string | null
           contact_phone?: string | null
           created_at?: string | null
+          expert_payout?: number
           id?: string
+          payment_reference?: string | null
+          payment_status?: string
+          platform_fee?: number
           requester_id: string
+          selected_expert_id?: string | null
           service_type: string
           status?: string | null
           store_id: string
+          total_amount?: number
         }
         Update: {
+          assigned_expert_id?: string | null
           budget?: string | null
+          completed_at?: string | null
+          completion_proof_url?: string | null
           contact_phone?: string | null
           created_at?: string | null
+          expert_payout?: number
           id?: string
+          payment_reference?: string | null
+          payment_status?: string
+          platform_fee?: number
           requester_id?: string
+          selected_expert_id?: string | null
           service_type?: string
           status?: string | null
           store_id?: string
+          total_amount?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "expert_requests_assigned_expert_id_fkey"
+            columns: ["assigned_expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_requests_selected_expert_id_fkey"
+            columns: ["selected_expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "expert_requests_store_id_fkey"
             columns: ["store_id"]
@@ -393,6 +434,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      experts: {
+        Row: {
+          avatar_url: string | null
+          bio: string | null
+          created_at: string
+          id: string
+          jobs_completed: number
+          name: string
+          rating: number | null
+          specialties: string[]
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          bio?: string | null
+          created_at?: string
+          id?: string
+          jobs_completed?: number
+          name: string
+          rating?: number | null
+          specialties?: string[]
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          bio?: string | null
+          created_at?: string
+          id?: string
+          jobs_completed?: number
+          name?: string
+          rating?: number | null
+          specialties?: string[]
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       feed_configs: {
         Row: {
