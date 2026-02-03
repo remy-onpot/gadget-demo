@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
 import { Database } from '@/lib/database.types';
+import { generateGradientColors } from '@/lib/theme-generator';
 
 // Components
 import { BrandHero } from '@/components/home/BrandHero';
@@ -59,8 +60,25 @@ export default async function StoreHomePage({ params }: { params: Promise<{ site
   // 3. Cast Data
   // @ts-ignore 
   const store = storeRaw as StoreData;
+  
+  // 3.1. Check if store is active/published
+  if (!store.is_active) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md text-center">
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Store Unavailable</h1>
+          <p className="text-slate-500">This store is currently not accepting visitors. Please check back later.</p>
+        </div>
+      </div>
+    );
+  }
+
   const settings = (store.settings as Record<string, any>) || {};
   const glassMode = settings.glass_mode === true || settings.glass_mode === 'true';
+  const themeColor = settings.theme_color || '#f97316';
+  
+  // Generate dynamic gradient colors from theme
+  const gradientColors = generateGradientColors(themeColor);
 
   // 4. Organize Content
   const activeBanners = store.banners?.filter(b => b.is_active) || [];
@@ -85,14 +103,31 @@ export default async function StoreHomePage({ params }: { params: Promise<{ site
   const categories = Array.from(categoryMap.values());
 
   return (
-    <div className="min-h-screen font-sans animate-in fade-in duration-500">
-       <style>{`:root { --primary: ${settings.theme_color || '#f97316'}; }`}</style>
+    <div className={`min-h-screen font-sans animate-in fade-in duration-500 ${glassMode ? `bg-gradient-to-br ${gradientColors.bg}` : 'bg-white'}`}>
+       <style>{`:root { --primary: ${themeColor}; }`}</style>
        
        {/* NOTE: <Header /> is removed because 'SiteLayout' already renders it.
           This prevents the Double Header issue.
        */}
 
-       <main className="space-y-0 md:space-y-2">
+       {glassMode && (
+         <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+           <div 
+             className="absolute top-0 right-0 w-96 h-96 rounded-full blur-3xl animate-pulse" 
+             style={{ backgroundColor: gradientColors.blob1 }}
+           />
+           <div 
+             className="absolute bottom-0 left-0 w-96 h-96 rounded-full blur-3xl animate-pulse" 
+             style={{ backgroundColor: gradientColors.blob2, animationDelay: '1s' }}
+           />
+           <div 
+             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full blur-3xl animate-pulse" 
+             style={{ backgroundColor: gradientColors.blob3, animationDelay: '2s' }}
+           />
+         </div>
+       )}
+
+       <main className="space-y-0 md:space-y-2 relative z-10">
          {/* Hero Section */}
          <BrandHero banners={brandBanners} storeName={store.name} />
          

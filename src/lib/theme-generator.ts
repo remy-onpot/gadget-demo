@@ -123,3 +123,55 @@ export const THEME_PRESETS = [
     radius: '1rem'
   }
 ];
+
+// 7. GRADIENT COLOR GENERATOR (For Glassmorphism Backgrounds)
+export const generateGradientColors = (baseHex: string): { bg: string; blob1: string; blob2: string; blob3: string } => {
+  if (!isValidHex(baseHex)) {
+    // Fallback to orange if invalid
+    baseHex = '#f97316';
+  }
+
+  const rgb = hexToRgb(baseHex);
+  if (!rgb) {
+    return {
+      bg: 'from-orange-50 via-pink-50 to-purple-50',
+      blob1: 'rgba(147, 51, 234, 0.3)', // purple
+      blob2: 'rgba(249, 115, 22, 0.3)', // orange
+      blob3: 'rgba(236, 72, 153, 0.3)', // pink
+    };
+  }
+
+  // Convert RGB to HSL for better color manipulation
+  const r = rgb.r / 255;
+  const g = rgb.g / 255;
+  const b = rgb.b / 255;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0, s = 0, l = (max + min) / 2;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+
+  h = Math.round(h * 360);
+
+  // Generate 3 variations with different hues
+  const hue1 = h;
+  const hue2 = (h + 60) % 360; // Complementary
+  const hue3 = (h + 120) % 360; // Triadic
+
+  return {
+    bg: `from-[hsl(${hue1},70%,95%)] via-[hsl(${hue2},70%,95%)] to-[hsl(${hue3},70%,95%)]`,
+    blob1: `hsla(${hue1}, 70%, 65%, 0.3)`,
+    blob2: `hsla(${hue2}, 70%, 65%, 0.3)`,
+    blob3: `hsla(${hue3}, 70%, 65%, 0.3)`,
+  };
+};
