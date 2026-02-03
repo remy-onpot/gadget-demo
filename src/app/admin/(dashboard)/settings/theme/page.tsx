@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useTransition } from 'react';
 import { useAdminData } from '@/hooks/useAdminData';
 import { getStoreSettings, updateStoreSettings } from '@/app/admin/(dashboard)/actions';
-import { Save, Loader2, Palette, Smartphone, Monitor, AlertTriangle, Wand2, RefreshCw } from 'lucide-react';
+import { Save, Loader2, Palette, Smartphone, Monitor, AlertTriangle, Wand2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { THEME_PRESETS, getContrastColor, getContrastScore, isValidHex, suggestAccessibleColor } from '@/lib/theme-generator';
 
@@ -12,10 +12,11 @@ export default function ThemeSettingsPage() {
   
   const [theme, setTheme] = useState({
     primary_color: '#4F46E5', 
-    bg_color: '#F8FAFC',      
+    bg_color: '#F8FAFC',       
     card_bg_color: '#FFFFFF', 
     text_color: '#0F172A', 
     border_radius: '1rem',    
+    glass_mode: false, // ✨ NEW: Glassmorphism State
   });
 
   const [isPending, startTransition] = useTransition();
@@ -36,6 +37,7 @@ export default function ThemeSettingsPage() {
             card_bg_color: data.card_bg_color || '#FFFFFF',
             text_color: data.text_color || '#0F172A',
             border_radius: data.border_radius || '1rem',
+            glass_mode: data.glass_mode || false, // Load from DB
           }));
         }
       } finally {
@@ -45,7 +47,7 @@ export default function ThemeSettingsPage() {
     loadData();
   }, [storeId]);
 
-  // AUTO-GENERATION
+  // AUTO-GENERATION & VALIDATION (Same as before)
   useEffect(() => {
     if (isValidHex(theme.bg_color)) {
         const safeTextColor = getContrastColor(theme.bg_color);
@@ -55,29 +57,24 @@ export default function ThemeSettingsPage() {
     }
   }, [theme.bg_color]);
 
-  // COMPUTED SAFETY SCORES
   const bgContrast = isValidHex(theme.bg_color) ? getContrastScore(theme.bg_color, theme.text_color) : 'Fail';
   const btnContrast = isValidHex(theme.primary_color) ? getContrastScore(theme.primary_color, '#FFFFFF') : 'Fail';
 
-  // ✅ GAP 3: Auto-Fixer
   const fixPrimaryColor = () => {
-      // If it fails on white, it's usually too light. Let's darken it.
       const saferColor = suggestAccessibleColor(theme.primary_color, 'darken');
       setTheme(prev => ({ ...prev, primary_color: saferColor }));
       toast.success("Color adjusted for better readability");
   };
 
-  // ✅ GAP 1: Input Validation Helper
   const handleHexChange = (key: keyof typeof theme, value: string) => {
-      // Allow typing, but we could strip non-hex chars here if we wanted strict masking
       setTheme(prev => ({ ...prev, [key]: value }));
   };
 
   const handleBlur = (key: keyof typeof theme) => {
+      // @ts-ignore
       const val = theme[key];
-      if (!isValidHex(val)) {
+      if (typeof val === 'string' && !isValidHex(val)) {
           toast.error(`Invalid Hex Code: ${val}. Reverting...`);
-          // Revert to default or previous valid state (Simplified: reverting to preset default for safety)
           if (key === 'primary_color') setTheme(prev => ({ ...prev, [key]: '#4F46E5' }));
           if (key === 'bg_color') setTheme(prev => ({ ...prev, [key]: '#F8FAFC' }));
           if (key === 'card_bg_color') setTheme(prev => ({ ...prev, [key]: '#FFFFFF' }));
@@ -90,13 +87,13 @@ export default function ThemeSettingsPage() {
           bg_color: preset.colors.bg,
           card_bg_color: preset.colors.card,
           text_color: getContrastColor(preset.colors.bg),
-          border_radius: preset.radius
+          border_radius: preset.radius,
+          glass_mode: false, // Reset glass mode on preset change
       });
       toast.success(`Applied ${preset.name} theme`);
   };
 
   const handleSave = () => {
-    // Final Safety Check before Save
     if (!isValidHex(theme.primary_color) || !isValidHex(theme.bg_color)) {
         toast.error("Please fix invalid color codes before saving.");
         return;
@@ -114,10 +111,28 @@ export default function ThemeSettingsPage() {
 
   if (authLoading || dataLoading) return <div className="h-[60vh] flex items-center justify-center"><Loader2 className="animate-spin text-slate-300"/></div>;
 
+  // ✨ HELPER: Preview Card Styles based on Glass Mode
+  const getPreviewCardStyle = () => {
+    if (theme.glass_mode) {
+      return {
+        backgroundColor: 'rgba(255, 255, 255, 0.6)',
+        backdropFilter: 'blur(12px)',
+        border: '1px solid rgba(255, 255, 255, 0.5)',
+        boxShadow: '0 4px 30px rgba(0, 0, 0, 0.05)',
+        borderRadius: theme.border_radius
+      };
+    }
+    return {
+      backgroundColor: theme.card_bg_color,
+      borderRadius: theme.border_radius,
+      border: '1px solid rgba(0,0,0,0.05)'
+    };
+  };
+
   return (
     <div className="max-w-6xl mx-auto pb-24 animate-in fade-in duration-500">
       
-      {/* HEADER ... (Same as before) */}
+      {/* HEADER */}
       <div className="mb-8 flex flex-col md:flex-row justify-between md:items-end gap-4">
         <div>
            <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
@@ -136,7 +151,7 @@ export default function ThemeSettingsPage() {
         {/* === CONTROLS (Left) === */}
         <div className="lg:col-span-4 space-y-6">
            
-           {/* PRESETS ... (Same as before) */}
+           {/* PRESETS */}
            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
               <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wider">
                  <Wand2 size={16} className="text-purple-500"/> Quick Presets
@@ -157,6 +172,30 @@ export default function ThemeSettingsPage() {
               </div>
            </div>
 
+           {/* ✨ NEW: GLASS MODE TOGGLE */}
+           <div className="bg-gradient-to-br from-indigo-50 to-white p-6 rounded-2xl border border-indigo-100 shadow-sm relative overflow-hidden">
+              <div className="flex justify-between items-center relative z-10">
+                 <div>
+                    <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                      <Sparkles className="text-indigo-500" size={18} /> Glass Mode
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1 max-w-[200px]">
+                       Enable a modern, translucent frosted glass effect for your product cards.
+                    </p>
+                 </div>
+                 
+                 <button 
+                   onClick={() => setTheme(prev => ({ ...prev, glass_mode: !prev.glass_mode }))}
+                   className={`w-14 h-8 rounded-full transition-colors flex items-center px-1 ${theme.glass_mode ? 'bg-indigo-600' : 'bg-slate-200'}`}
+                 >
+                    <div className={`w-6 h-6 bg-white rounded-full shadow-md transition-transform transform ${theme.glass_mode ? 'translate-x-6' : 'translate-x-0'}`} />
+                 </button>
+              </div>
+              
+              {/* Decorative background glow */}
+              <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-indigo-200/50 rounded-full blur-2xl pointer-events-none" />
+           </div>
+
            {/* COLORS */}
            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
               <h3 className="font-bold text-slate-900 flex items-center gap-2">Custom Colors</h3>
@@ -165,7 +204,6 @@ export default function ThemeSettingsPage() {
               <div>
                  <div className="flex justify-between items-center mb-1.5 h-6">
                     <label className="text-xs font-bold text-slate-400 uppercase">Primary Brand</label>
-                    {/* Guardrail: Warn if buttons are hard to read */}
                     {btnContrast === 'Fail' && isValidHex(theme.primary_color) && (
                         <button 
                            onClick={fixPrimaryColor}
@@ -214,9 +252,11 @@ export default function ThemeSettingsPage() {
                  </div>
               </div>
               
-              {/* CARD SURFACE */}
-              <div>
-                 <label className="text-xs font-bold text-slate-400 uppercase mb-1.5 block">Card Surface</label>
+              {/* CARD SURFACE - Disabled in Glass Mode */}
+              <div className={`transition-opacity ${theme.glass_mode ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                 <label className="text-xs font-bold text-slate-400 uppercase mb-1.5 block">
+                    Card Surface {theme.glass_mode && '(Auto)'}
+                 </label>
                  <div className="flex items-center gap-3">
                     <input type="color" value={theme.card_bg_color} onChange={e => handleHexChange('card_bg_color', e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer border-none bg-transparent p-0"/>
                     <input 
@@ -228,18 +268,9 @@ export default function ThemeSettingsPage() {
                     />
                  </div>
               </div>
-
-              {/* READ ONLY TEXT COLOR INDICATOR */}
-              <div className="p-3 bg-slate-50 rounded-lg flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-500">Auto Text Color</span>
-                  <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-bold">{theme.text_color}</span>
-                      <div className="w-4 h-4 rounded-full border border-slate-200" style={{ backgroundColor: theme.text_color }}/>
-                  </div>
-              </div>
            </div>
 
-           {/* SHAPE ... (Same as before) */}
+           {/* SHAPE */}
            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
               <h3 className="font-bold text-slate-900 mb-4">Corner Radius</h3>
               <div className="grid grid-cols-4 gap-2">
@@ -257,51 +288,54 @@ export default function ThemeSettingsPage() {
            </div>
         </div>
 
-        {/* LIVE PREVIEW ... (Same as before) */}
+        {/* LIVE PREVIEW */}
         <div className="lg:col-span-8 sticky top-6">
-            {/* ... (Existing Preview Code) ... */}
            <div className={`mx-auto transition-all duration-500 ease-in-out border-8 border-slate-900 rounded-[2.5rem] overflow-hidden shadow-2xl bg-white ${activeView === 'mobile' ? 'w-[375px] h-[700px]' : 'w-full h-[600px]'}`}>
-              {/* Fake Store Content (Same as before) */}
+              {/* PREVIEW CONTENT */}
               <div 
                  className="h-full w-full overflow-y-auto"
                  style={{
-                    backgroundColor: theme.bg_color,
-                    color: theme.text_color,
-                    // @ts-ignore
-                    '--primary': theme.primary_color,
-                    '--card-bg': theme.card_bg_color,
-                    '--radius': theme.border_radius,
+                   backgroundColor: theme.bg_color,
+                   color: theme.text_color,
+                   // @ts-ignore
+                   '--primary': theme.primary_color,
+                   '--radius': theme.border_radius,
                  }}
               >
-                  {/* ... (Keep existing preview JSX) ... */}
-                  {/* Placeholder for brevity: copy previous preview content here */}
-                  <div style={{ backgroundColor: theme.card_bg_color }} className="px-4 py-3 flex justify-between items-center sticky top-0 z-10 shadow-sm mb-4">
-                     <div className="w-8 h-8 rounded-lg" style={{ backgroundColor: theme.primary_color }} />
-                     <div className="w-8 h-8 rounded-full bg-slate-200/50" />
-                  </div>
-                  <div className="px-4 space-y-6 pb-20">
-                     <div className="w-full aspect-[2/1] bg-slate-200/50 rounded-[var(--radius)] relative overflow-hidden flex items-center justify-center">
+                 {/* Preview Navbar */}
+                 <div style={getPreviewCardStyle()} className="px-4 py-3 flex justify-between items-center sticky top-0 z-10 mb-4">
+                    <div className="w-8 h-8 rounded-lg" style={{ backgroundColor: theme.primary_color }} />
+                    <div className="w-8 h-8 rounded-full bg-slate-200/50" />
+                 </div>
+                 
+                 <div className="px-4 space-y-6 pb-20">
+                     {/* Banner */}
+                     <div className="w-full aspect-[2/1] bg-slate-200/50 relative overflow-hidden flex items-center justify-center" style={{ borderRadius: theme.border_radius }}>
                         <h2 className="text-xl md:text-3xl font-black mix-blend-overlay opacity-50">THEME PREVIEW</h2>
                         <button className="absolute bottom-4 left-4 px-5 py-2 text-white font-bold text-xs shadow-lg" style={{ backgroundColor: theme.primary_color, borderRadius: theme.border_radius }}>Shop Now</button>
                      </div>
+                     
+                     {/* Categories */}
                      <div className="flex gap-2 overflow-x-auto pb-2">
                          {['All', 'Shoes', 'Shirts', 'Tech'].map((c, i) => (
                              <div key={c} className={`px-4 py-1.5 text-xs font-bold whitespace-nowrap border ${i===0 ? 'text-white border-transparent' : 'border-current opacity-60'}`} style={{ backgroundColor: i===0 ? theme.primary_color : 'transparent', borderRadius: theme.border_radius }}>{c}</div>
                          ))}
                      </div>
+                     
+                     {/* Product Grid */}
                      <div className={`grid gap-4 ${activeView === 'mobile' ? 'grid-cols-2' : 'grid-cols-3'}`}>
                         {[1, 2, 3, 4].map(i => (
-                           <div key={i} className="p-3 shadow-sm border border-black/5" style={{ backgroundColor: theme.card_bg_color, borderRadius: theme.border_radius }}>
-                              <div className="aspect-square bg-slate-200/50 mb-3 rounded-[calc(var(--radius)/1.5)]" />
+                           <div key={i} className="p-3 transition-all" style={getPreviewCardStyle()}>
+                              <div className="aspect-square bg-slate-200/50 mb-3" style={{ borderRadius: `calc(${theme.border_radius} / 1.5)` }} />
                               <div className="h-3 w-3/4 bg-current opacity-10 rounded mb-2" />
                               <div className="flex justify-between items-center">
                                  <div className="h-4 w-1/3 bg-current opacity-20 rounded" />
-                                 <div className="w-8 h-8 flex items-center justify-center text-white" style={{ backgroundColor: theme.primary_color, borderRadius: theme.border_radius }}>+</div>
+                                 <div className="w-8 h-8 flex items-center justify-center text-white" style={{ backgroundColor: theme.primary_color, borderRadius: `calc(${theme.border_radius} / 2)` }}>+</div>
                               </div>
                            </div>
                         ))}
                      </div>
-                  </div>
+                 </div>
               </div>
            </div>
            

@@ -2,14 +2,16 @@ import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
 import StoreAuthForm from '@/components/storefront/StoreAuthForm';
 
-export async function generateMetadata({ params }: { params: { site: string } }) {
+export async function generateMetadata({ params }: { params: Promise<{ site: string }> }) {
+  const resolvedParams = await params;
   return {
-    title: `Login | ${params.site}`,
+    title: `Login | ${resolvedParams.site}`,
     description: 'Access your account history and manage orders.',
   };
 }
 
-export default async function LoginPage({ params }: { params: { site: string } }) {
+export default async function LoginPage({ params }: { params: Promise<{ site: string }> }) {
+  const resolvedParams = await params;
   // ✅ FIX: 'createClient()' is async. We must await it.
   const supabase = await createClient();
 
@@ -17,7 +19,7 @@ export default async function LoginPage({ params }: { params: { site: string } }
   const { data: store } = await supabase
     .from('stores')
     .select('id, name, settings')
-    .eq('subdomain', params.site)
+    .eq('slug', resolvedParams.site)
     .single();
 
   if (!store) return notFound();
