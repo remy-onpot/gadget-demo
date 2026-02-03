@@ -140,7 +140,7 @@ export const ProductCard = ({
           </div>
         </div>
 
-      </div>
+      
     </Link>
   );
 };
