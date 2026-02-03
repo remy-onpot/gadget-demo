@@ -203,12 +203,12 @@ export default function ApplicationPage() {
                                 {slugStatus === 'taken' && <span className="text-red-500 text-xs flex items-center gap-1"><AlertCircle size={12}/> Taken</span>}
                             </label>
                             <div className={`flex items-center border rounded-xl overflow-hidden transition-colors ${slugStatus === 'taken' ? 'border-red-300 bg-red-50' : 'border-slate-300 bg-white focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500'}`}>
-                                <span className="bg-slate-50 border-r border-slate-200 px-4 py-3 text-slate-500 text-sm font-bold select-none">nimdeshop.com/</span>
                                 <input 
                                     name="storeSlug" value={formData.storeSlug} onChange={handleChange}
                                     placeholder="your-brand"
                                     className="flex-1 px-4 py-3 text-sm font-bold bg-transparent outline-none text-slate-900 placeholder:font-normal"
                                 />
+                                <span className="bg-slate-50 border-l border-slate-200 px-4 py-3 text-slate-500 text-sm font-bold select-none">.nimdeshop.com</span>
                             </div>
                         </div>
 
