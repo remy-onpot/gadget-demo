@@ -9,7 +9,12 @@ import { ProductCard } from '@/components/ProductCard';
 // ✅ Use Centralized Type
 type ProductRow = Database['public']['Tables']['products']['Row'];
 
-export const FeaturedRow = ({ products }: { products: ProductRow[] }) => {
+interface FeaturedRowProps {
+  products: ProductRow[];
+  glassMode?: boolean;
+}
+
+export const FeaturedRow = ({ products, glassMode = false }: FeaturedRowProps) => {
   if (!products || products.length === 0) return null;
 
   return (
@@ -39,7 +44,7 @@ export const FeaturedRow = ({ products }: { products: ProductRow[] }) => {
         </div>
 
         {/* THE GRID (Clean & Sharp) */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
           {products.map((product, index) => (
             <div 
                 key={product.id} 
@@ -47,7 +52,7 @@ export const FeaturedRow = ({ products }: { products: ProductRow[] }) => {
                 style={{ animationDelay: `${index * 100}ms` }} // Stagger effect
             >
                {/* Cast to any to ensure compatibility until ProductCard is fully typed */}
-               <ProductCard product={product as any} />
+               <ProductCard product={product as any} glassMode={glassMode} />
             </div>
           ))}
         </div>

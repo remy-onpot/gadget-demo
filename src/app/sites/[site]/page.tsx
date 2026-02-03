@@ -59,7 +59,8 @@ export default async function StoreHomePage({ params }: { params: Promise<{ site
   // 3. Cast Data
   // @ts-ignore 
   const store = storeRaw as StoreData;
-  const settings = (store.settings as Record<string, string>) || {};
+  const settings = (store.settings as Record<string, any>) || {};
+  const glassMode = settings.glass_mode === true || settings.glass_mode === 'true';
 
   // 4. Organize Content
   const activeBanners = store.banners?.filter(b => b.is_active) || [];
@@ -99,7 +100,7 @@ export default async function StoreHomePage({ params }: { params: Promise<{ site
          
          {/* Featured Row (Only shows if products exist) */}
          {featuredProducts.length > 0 && (
-            <FeaturedRow products={featuredProducts} />
+            <FeaturedRow products={featuredProducts} glassMode={glassMode} />
          )}
          
          {/* Category Rails */}
@@ -109,6 +110,7 @@ export default async function StoreHomePage({ params }: { params: Promise<{ site
                   key={cat.slug} 
                   category={cat.name}
                   categorySlug={cat.slug}
+                  glassMode={glassMode}
                   // Filter products by the joined Category Name
                   products={store.products.filter(p => p.categories?.slug === cat.slug)} 
                />
