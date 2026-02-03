@@ -73,11 +73,15 @@ export default async function StoreHomePage({ params }: { params: Promise<{ site
     .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
     .slice(0, 8);
 
-  // 5. Extract Unique Categories from Products
+  // 5. Extract Unique Categories from Products (with both name and slug)
   // We use this to dynamically build the rails
-  const categories = Array.from(new Set(
-      store.products?.map(p => p.categories?.name).filter(Boolean)
-  )) as string[];
+  const categoryMap = new Map<string, { name: string; slug: string }>();
+  store.products?.forEach(p => {
+    if (p.categories?.name && p.categories?.slug) {
+      categoryMap.set(p.categories.slug, { name: p.categories.name, slug: p.categories.slug });
+    }
+  });
+  const categories = Array.from(categoryMap.values());
 
   return (
     <div className="min-h-screen font-sans animate-in fade-in duration-500">
@@ -102,10 +106,11 @@ export default async function StoreHomePage({ params }: { params: Promise<{ site
          {categories.length > 0 ? (
             categories.slice(0, 4).map(cat => (
                <CategoryRail 
-                  key={cat} 
-                  category={cat} 
+                  key={cat.slug} 
+                  category={cat.name}
+                  categorySlug={cat.slug}
                   // Filter products by the joined Category Name
-                  products={store.products.filter(p => p.categories?.name === cat)} 
+                  products={store.products.filter(p => p.categories?.slug === cat.slug)} 
                />
             ))
          ) : (

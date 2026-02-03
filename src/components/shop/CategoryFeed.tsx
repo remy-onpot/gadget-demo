@@ -83,7 +83,8 @@ export default async function CategoryFeed({ storeId }: CategoryFeedProps) {
         return (
            <CategoryRail 
               key={group.id} 
-              category={group.name} 
+              category={group.name}
+              categorySlug={group.data.slug}
               products={group.products}
               settings={settings}
            />

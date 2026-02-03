@@ -6,12 +6,12 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Database } from '@/lib/database.types'; 
 import { ProductCard } from '@/components/ProductCard';
-import { slugify } from '@/lib/utils';
 
 type ProductRow = Database['public']['Tables']['products']['Row'];
 
 interface RailProps {
-  category: string;
+  category: string;       // Display name (e.g., "Laptops")
+  categorySlug: string;   // URL slug (e.g., "laptops")
   products: ProductRow[]; 
   settings?: {
     title?: string;
@@ -20,7 +20,7 @@ interface RailProps {
   };
 }
 
-export const CategoryRail = ({ category, products, settings }: RailProps) => {
+export const CategoryRail = ({ category, categorySlug, products, settings }: RailProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 1. SMART FALLBACKS
@@ -60,7 +60,7 @@ export const CategoryRail = ({ category, products, settings }: RailProps) => {
            </div>
            
            <div className="flex items-center gap-4">
-              <Link href={`/category/${slugify(category)}`} className="hidden md:flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-orange-500 transition-colors">
+              <Link href={`/category/${categorySlug}`} className="hidden md:flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-orange-500 transition-colors">
                   View All <ArrowRight size={16}/>
               </Link>
               <div className="hidden md:flex gap-2">
@@ -85,7 +85,7 @@ export const CategoryRail = ({ category, products, settings }: RailProps) => {
              {/* 1. IDENTITY CARD (The "Cover Art") */}
              <div className="min-w-[280px] md:min-w-[320px] snap-start h-auto">
                 <Link 
-                  href={`/category/${category}`}
+                  href={`/category/${categorySlug}`}
                   className="block h-full min-h-[400px] rounded-3xl relative overflow-hidden group/card shadow-lg hover:shadow-2xl transition-all hover:-translate-y-1 bg-slate-900"
                 >
                    {/* Background Image */}
@@ -143,7 +143,7 @@ export const CategoryRail = ({ category, products, settings }: RailProps) => {
              {/* 3. END CARD (View All) */}
              <div className="min-w-[200px] md:min-w-[240px] snap-start">
                 <Link 
-                  href={`/category/${category}`} 
+                  href={`/category/${categorySlug}`} 
                   className="h-full min-h-[400px] rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 hover:border-orange-200 hover:bg-orange-50 flex flex-col items-center justify-center gap-4 group/more transition-all cursor-pointer"
                 >
                    <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center group-hover/more:scale-110 transition-transform group-hover/more:shadow-md">

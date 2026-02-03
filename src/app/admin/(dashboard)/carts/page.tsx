@@ -2,50 +2,48 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useAdminData } from '@/hooks/useAdminData'; // Import the hook
-import { MessageCircle, Clock, ShoppingBag, ArrowRight, Loader2 } from 'lucide-react';
+import { useAdminData } from '@/hooks/useAdminData';
+import { MessageCircle, Clock, ShoppingBag, ArrowRight, Loader2, CheckCircle } from 'lucide-react';
 import { Database } from '@/lib/database.types';
 
-type CartRow = Database['public']['Tables']['carts']['Row'];
+// 1. Correct Type Definition (Matches 'abandoned_checkouts' table)
+type AbandonedCartRow = Database['public']['Tables']['abandoned_checkouts']['Row'];
 
-interface CartItem {
+// 2. Correct JSON Item Structure (Matches what your Sniper saves)
+interface SniperItem {
+  product_name: string;
+  price: number;
   quantity: number;
-  product: {
-    name: string;
-  };
-  variant: {
-    price: number;
-  };
-}
-
-interface ContactInfo {
-  name?: string;
-  phone?: string;
+  image?: string;
+  specs?: Record<string, string>;
 }
 
 export default function AbandonedCartsPage() {
-  // 1. Use the hook
   const { storeId, loading: authLoading } = useAdminData();
-  
-  const [carts, setCarts] = useState<CartRow[]>([]);
+  const [carts, setCarts] = useState<AbandonedCartRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 2. WAIT for the hook to find the store
     if (!storeId) return;
-    
     fetchCarts();
-  }, [storeId]); // 👈 Only run when storeId is ready
+  }, [storeId]);
 
   const fetchCarts = async () => {
-    if (!storeId) return;
-    
     setLoading(true);
+    
+    // 3. Fetch from the CORRECT table
+  const fetchCarts = async () => {
+    // 🛡️ FIX: TypeScript Guard Clause
+    // This confirms storeId is not null before using it below
+    if (!storeId) return; 
+
+    setLoading(true);
+    
     const { data } = await supabase
-      .from('carts')
+      .from('abandoned_checkouts')
       .select('*')
-      .eq('store_id', storeId) // ✅ Use the ID from the hook
-      .eq('status', 'active')
+      .eq('store_id', storeId) // ✅ TypeScript is happy now
+      .eq('recovered', false)
       .order('created_at', { ascending: false })
       .limit(50);
       
@@ -53,19 +51,20 @@ export default function AbandonedCartsPage() {
     setLoading(false);
   };
 
-  const generateRecoveryLink = (cart: CartRow) => {
-    const info = cart.contact_info as unknown as ContactInfo | null;
-    const items = cart.cart_content as unknown as CartItem[] | null;
+  const generateRecoveryLink = (cart: AbandonedCartRow) => {
+    // 4. Access Top-Level Columns directly (No contact_info JSON)
+    if (!cart.phone) return '#';
 
-    if (!info?.phone) return '#';
-
-    const name = info.name || "Customer";
-    const firstItem = items?.[0]?.product?.name || "your items";
-    const total = items?.reduce((sum, item) => sum + (item.variant.price * item.quantity), 0) || 0;
+    // 5. Access Cart Items from the correct JSON structure
+    const items = cart.cart_items as unknown as SniperItem[] | null;
+    
+    const name = cart.name || "Customer";
+    const firstItem = items?.[0]?.product_name || "your items"; // Flat property
+    const total = cart.total_value || 0; // Use the pre-calculated total from DB
     
     const msg = `Hi ${name} 👋, I saw you were checking out the *${firstItem}* (Total: ₵${total}) but didn't finish!\n\nDo you need help with payment? I can offer you a small discount if you complete it now.\n\nReply YES to continue!`;
     
-    const cleanPhone = info.phone.replace(/[^0-9]/g, '');
+    const cleanPhone = cart.phone.replace(/[^0-9]/g, '');
     const finalPhone = cleanPhone.startsWith('0') ? '233' + cleanPhone.substring(1) : cleanPhone;
 
     return `https://wa.me/${finalPhone}?text=${encodeURIComponent(msg)}`;
@@ -86,13 +85,9 @@ export default function AbandonedCartsPage() {
 
       <div className="grid gap-4">
         {carts.map((cart) => {
-          const info = cart.contact_info as unknown as ContactInfo;
-          const items = cart.cart_content as unknown as CartItem[];
+          // Cast the JSON column
+          const items = cart.cart_items as unknown as SniperItem[];
           
-          const total = items?.reduce((sum, item) => sum + (item.variant.price * item.quantity), 0) || 0;
-
-          if (!info?.phone) return null; 
-
           return (
             <div key={cart.id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all group">
                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -101,15 +96,16 @@ export default function AbandonedCartsPage() {
                         <ShoppingBag size={20} />
                      </div>
                      <div>
-                        <h3 className="font-bold text-slate-900 text-lg">{info.name || 'Unknown Guest'}</h3>
-                        <p className="text-slate-500 font-mono text-sm mb-2">{info.phone}</p>
+                        {/* 6. Use Direct Columns */}
+                        <h3 className="font-bold text-slate-900 text-lg">{cart.name || 'Unknown Guest'}</h3>
+                        <p className="text-slate-500 font-mono text-sm mb-2">{cart.phone}</p>
                         
                         <div className="flex flex-wrap gap-2">
                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-orange-50 text-orange-600 px-2 py-1 rounded border border-orange-100 uppercase tracking-wide">
                               Items: {items?.length || 0}
                            </span>
                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-green-50 text-green-600 px-2 py-1 rounded border border-green-100 uppercase tracking-wide">
-                              Value: ₵{total.toLocaleString()}
+                              Value: ₵{(cart.total_value || 0).toLocaleString()}
                            </span>
                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-gray-400 px-2 py-1">
                               <Clock size={10} /> {cart.created_at ? new Date(cart.created_at).toLocaleString() : 'Just now'}
@@ -118,13 +114,19 @@ export default function AbandonedCartsPage() {
                      </div>
                   </div>
 
-                  <a 
-                    href={generateRecoveryLink(cart)}
-                    target="_blank"
-                    className="w-full md:w-auto bg-[#25D366] hover:bg-[#1ebd5e] text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-green-200 transition-transform active:scale-95"
-                  >
-                    <MessageCircle size={18} /> Recover via WhatsApp <ArrowRight size={16} className="opacity-50 group-hover:translate-x-1 transition-transform"/>
-                  </a>
+                  {cart.phone ? (
+                    <a 
+                      href={generateRecoveryLink(cart)}
+                      target="_blank"
+                      className="w-full md:w-auto bg-[#25D366] hover:bg-[#1ebd5e] text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-green-200 transition-transform active:scale-95"
+                    >
+                      <MessageCircle size={18} /> Recover <ArrowRight size={16} className="opacity-50 group-hover:translate-x-1 transition-transform"/>
+                    </a>
+                  ) : (
+                    <div className="text-xs text-red-400 bg-red-50 px-3 py-1 rounded-lg">
+                       No Phone Captured
+                    </div>
+                  )}
                </div>
             </div>
           );
@@ -142,4 +144,4 @@ export default function AbandonedCartsPage() {
       </div>
     </div>
   );
-}
+}}

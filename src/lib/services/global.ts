@@ -1,6 +1,12 @@
 import { supabase } from '@/lib/supabase';
 import { unstable_cache } from 'next/cache';
 
+// Category type for navigation
+export interface CategoryNav {
+  name: string;
+  slug: string;
+}
+
 // ✅ CACHED DATA LAYER: Store-specific caching with revalidation tags
 // Create cached function factory to prevent recreation on every call
 const createCachedGlobalData = (storeId: string) =>
@@ -8,7 +14,7 @@ const createCachedGlobalData = (storeId: string) =>
     async () => {
       if (!storeId) {
         console.error("getGlobalData called without storeId");
-        return { settings: {}, categories: [] };
+        return { settings: {}, categories: [] as CategoryNav[] };
       }
 
       // 1. Fetch Site Settings
@@ -20,15 +26,18 @@ const createCachedGlobalData = (storeId: string) =>
 
       const settings = (storeData?.settings as Record<string, string>) || {};
 
-      // 2. Fetch Categories (Dynamic Navigation)
+      // 2. Fetch Categories (Dynamic Navigation) - Include both name and slug
       const { data: categoriesData } = await supabase
         .from('categories')
-        .select('name')
+        .select('name, slug')
         .eq('store_id', storeId)
-        .order('name', { ascending: true });
+        .order('sort_order', { ascending: true });
 
-      // Map to a simple string array for the navigation menu
-      const categories = categoriesData?.map(c => c.name) || [];
+      // Map to objects with name and slug for proper URL generation
+      const categories: CategoryNav[] = categoriesData?.map(c => ({ 
+        name: c.name, 
+        slug: c.slug 
+      })) || [];
 
       return { settings, categories };
     },

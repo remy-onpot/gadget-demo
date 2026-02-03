@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase-server';
 import { StoreList } from '@/components/super-admin/StoreList'; 
 import { PageActions } from '@/components/super-admin/PageActions';
-import { ShieldAlert, Building2, Activity, CreditCard } from 'lucide-react';
+import { PendingApplications } from '@/components/super-admin/PendingApplications';
+import { fetchPendingApplications } from '@/actions/application-actions';
+import { ShieldAlert, Building2, Activity, CreditCard, ClipboardList } from 'lucide-react';
 
 export default async function SuperAdminPage() {
   const supabase = await createClient();
@@ -26,6 +28,10 @@ export default async function SuperAdminPage() {
     .select('*', { count: 'exact' })
     .order('created_at', { ascending: false });
 
+  // Fetch pending applications
+  const applications = await fetchPendingApplications();
+  const pendingCount = applications.filter(a => a.status === 'pending').length;
+
   const activeCount = stores?.filter(s => s.is_active).length || 0;
   const growthPlanCount = stores?.filter(s => s.plan_id === 'growth').length || 0;
 
@@ -43,13 +49,17 @@ export default async function SuperAdminPage() {
       </div>
 
       {/* 2. STATS ROW */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <StatCard label="Pending Apps" value={pendingCount} icon={<ClipboardList size={24} />} color="text-amber-600 bg-amber-50 border-amber-100" />
         <StatCard label="Total Ecosystems" value={count || 0} icon={<Building2 size={24} />} />
         <StatCard label="Active Status" value={activeCount} icon={<Activity size={24} />} color="text-green-600 bg-green-50 border-green-100" />
         <StatCard label="Pro Plans" value={growthPlanCount} icon={<CreditCard size={24} />} color="text-purple-600 bg-purple-50 border-purple-100" />
       </div>
 
-      {/* 3. MAIN LIST (Full Width Now) */}
+      {/* 3. PENDING APPLICATIONS */}
+      <PendingApplications applications={applications} />
+
+      {/* 4. MAIN LIST (Full Width Now) */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
          <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
             <h3 className="font-bold text-slate-900 flex items-center gap-2">

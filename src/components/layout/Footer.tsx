@@ -6,10 +6,11 @@ import {
   Linkedin, Clock, CreditCard, Smartphone, ShieldCheck 
 } from 'lucide-react';
 import Link from 'next/link';
+import type { CategoryNav } from '@/lib/services/global';
 
 interface FooterProps {
   settings: Record<string, string>;
-  categories: string[];
+  categories: CategoryNav[];
 }
 
 export const Footer = ({ settings, categories }: FooterProps) => {
@@ -62,9 +63,9 @@ export const Footer = ({ settings, categories }: FooterProps) => {
               <h4 className="font-bold text-white mb-6 uppercase text-xs tracking-widest">Shop</h4>
               <ul className="space-y-3 text-sm font-medium">
                  {categories.slice(0, 6).map(cat => (
-                    <li key={cat}>
+                    <li key={cat.slug}>
                         <Link 
-                            href={`/category/${cat}`} 
+                            href={`/category/${cat.slug}`} 
                             className="transition-colors capitalize block py-1 hover:opacity-100 opacity-70"
                             style={{ 
                                 // We use style for hover color to match dynamic theme
@@ -78,7 +79,7 @@ export const Footer = ({ settings, categories }: FooterProps) => {
                                 but standard white hover is safer for dark footers. 
                                 Let's strictly use Brand Color for the "View All" link. 
                             */}
-                            <span className="hover:text-white">{cat.replace(/-/g, ' ')}</span>
+                            <span className="hover:text-white">{cat.name}</span>
                         </Link>
                     </li>
                  ))}

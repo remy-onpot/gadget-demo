@@ -521,6 +521,63 @@ export type Database = {
           },
         ]
       }
+      onboarding_applications: {
+        Row: {
+          business_name: string
+          business_slug: string
+          created_at: string | null
+          digital_address: string | null
+          email: string | null
+          id: string
+          id_card_url: string
+          legal_name: string | null
+          password_hash: string | null
+          phone: string
+          physical_address: string | null
+          plan_id: string
+          rejection_reason: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          business_name: string
+          business_slug: string
+          created_at?: string | null
+          digital_address?: string | null
+          email?: string | null
+          id?: string
+          id_card_url: string
+          legal_name?: string | null
+          password_hash?: string | null
+          phone: string
+          physical_address?: string | null
+          plan_id?: string
+          rejection_reason?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          business_name?: string
+          business_slug?: string
+          created_at?: string | null
+          digital_address?: string | null
+          email?: string | null
+          id?: string
+          id_card_url?: string
+          legal_name?: string | null
+          password_hash?: string | null
+          phone?: string
+          physical_address?: string | null
+          plan_id?: string
+          rejection_reason?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       order_items: {
         Row: {
           id: string

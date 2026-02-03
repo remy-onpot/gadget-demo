@@ -6,10 +6,11 @@ import { ShoppingCart, Menu, X, ArrowRight, Search, User } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { HeaderSearch } from './HeaderSearch'; 
+import type { CategoryNav } from '@/lib/services/global';
 
 interface HeaderProps {
   settings: Record<string, string>;
-  categories: string[];
+  categories: CategoryNav[];
 }
 
 export const Header = ({ settings, categories }: HeaderProps) => {
@@ -126,13 +127,13 @@ export const Header = ({ settings, categories }: HeaderProps) => {
               <span className="text-xs font-black opacity-50 uppercase tracking-widest mb-2">Categories</span>
               {categories.map((cat) => (
                 <Link 
-                   key={cat} 
-                   href={`/category/${cat}`} 
+                   key={cat.slug} 
+                   href={`/category/${cat.slug}`} 
                    className="p-4 rounded-2xl flex justify-between items-center group active:scale-95 transition-all capitalize border border-transparent hover:border-black/5" 
                    style={{ backgroundColor: 'var(--page-bg)' }}
                    onClick={() => setMobileMenuOpen(false)}
                 >
-                  {cat} 
+                  {cat.name} 
                   <ArrowRight className="w-4 h-4 opacity-30 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--primary)' }} />
                 </Link>
               ))}
