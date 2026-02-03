@@ -12,9 +12,10 @@ type ProductRow = Database['public']['Tables']['products']['Row'];
 interface FeaturedRowProps {
   products: ProductRow[];
   glassMode?: boolean;
+  primaryColor?: string;
 }
 
-export const FeaturedRow = ({ products, glassMode = false }: FeaturedRowProps) => {
+export const FeaturedRow = ({ products, glassMode = false, primaryColor }: FeaturedRowProps) => {
   if (!products || products.length === 0) return null;
 
   return (
@@ -52,7 +53,7 @@ export const FeaturedRow = ({ products, glassMode = false }: FeaturedRowProps) =
                 style={{ animationDelay: `${index * 100}ms` }} // Stagger effect
             >
                {/* Cast to any to ensure compatibility until ProductCard is fully typed */}
-               <ProductCard product={product as any} glassMode={glassMode} />
+               <ProductCard product={product as any} glassMode={glassMode} primaryColor={primaryColor} />
             </div>
           ))}
         </div>

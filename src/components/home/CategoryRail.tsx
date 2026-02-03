@@ -14,6 +14,7 @@ interface RailProps {
   categorySlug: string;   // URL slug (e.g., "laptops")
   products: ProductRow[]; 
   glassMode?: boolean;
+  primaryColor?: string;
   settings?: {
     title?: string;
     subtitle?: string;
@@ -21,7 +22,7 @@ interface RailProps {
   };
 }
 
-export const CategoryRail = ({ category, categorySlug, products, glassMode = false, settings }: RailProps) => {
+export const CategoryRail = ({ category, categorySlug, products, glassMode = false, primaryColor, settings }: RailProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 1. SMART FALLBACKS
@@ -137,7 +138,7 @@ export const CategoryRail = ({ category, categorySlug, products, glassMode = fal
              {products.map((product) => (
                 <div key={product.id} className="min-w-[280px] md:min-w-[300px] snap-start">
                    {/* Ensure ProductCard is compatible or cast it */}
-                   <ProductCard product={product as any} glassMode={glassMode} />
+                   <ProductCard product={product as any} glassMode={glassMode} primaryColor={primaryColor} />
                 </div>
              ))}
              

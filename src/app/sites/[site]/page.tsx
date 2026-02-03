@@ -135,7 +135,7 @@ export default async function StoreHomePage({ params }: { params: Promise<{ site
          
          {/* Featured Row (Only shows if products exist) */}
          {featuredProducts.length > 0 && (
-            <FeaturedRow products={featuredProducts} glassMode={glassMode} />
+            <FeaturedRow products={featuredProducts} glassMode={glassMode} primaryColor={themeColor} />
          )}
          
          {/* Category Rails */}
@@ -146,6 +146,7 @@ export default async function StoreHomePage({ params }: { params: Promise<{ site
                   category={cat.name}
                   categorySlug={cat.slug}
                   glassMode={glassMode}
+                  primaryColor={themeColor}
                   // Filter products by the joined Category Name
                   products={store.products.filter(p => p.categories?.slug === cat.slug)} 
                />
