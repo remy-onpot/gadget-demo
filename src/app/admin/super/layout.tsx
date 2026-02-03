@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase-server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import { SignOutButton } from '@/components/admin/SignOutModal';
 import { 
   ShieldAlert, 
   LayoutDashboard, 
@@ -53,11 +54,7 @@ export default async function SuperAdminLayout({
                 SA
              </div>
 
-             <form action="/auth/signout" method="post">
-               <button className="p-2 hover:bg-white/10 rounded-full text-slate-400 hover:text-rose-400 transition-colors" title="Sign Out">
-                 <LogOut size={18} />
-               </button>
-             </form>
+             <SignOutButton />
           </div>
 
         </div>

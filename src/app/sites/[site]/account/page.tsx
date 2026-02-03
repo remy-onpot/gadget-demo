@@ -2,14 +2,15 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase-server";
 import ProfileDashboard from "@/components/storefront/ProfileDashboard";
 
-export default async function AccountPage({ params }: { params: { site: string } }) {
+export default async function AccountPage({ params }: { params: Promise<{ site: string }> }) {
+  const resolvedParams = await params;
   const supabase = await createClient();
 
   // 1. Get Store Context (Subdomain -> ID)
   const { data: store } = await supabase
     .from('stores')
     .select('id, settings')
-    .eq('slug', params.site)
+    .eq('slug', resolvedParams.site)
     .single();
 
   if (!store) return notFound();

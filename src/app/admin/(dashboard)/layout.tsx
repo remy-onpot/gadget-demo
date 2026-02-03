@@ -21,6 +21,7 @@ import {
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { MobileExperiencePrompt } from '@/components/ui/MobileExperiencePrompt';
+import { SignOutButton } from '@/components/admin/SignOutModal';
 
 interface NavItemProps {
   href: string;
@@ -122,9 +123,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           >
             <RefreshCw size={20} /> Switch Store
           </Link>
-          <button className="flex items-center gap-3 text-gray-400 hover:text-white transition w-full p-2 rounded-lg hover:bg-white/5">
-            <LogOut size={20} /> Logout
-          </button>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-400 text-sm">Sign Out</span>
+            <SignOutButton />
+          </div>
         </div>
       </aside>
 
