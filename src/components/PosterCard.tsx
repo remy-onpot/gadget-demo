@@ -8,6 +8,8 @@ import { ProductCardVisualProps } from '@/lib/types/card-types';
 /**
  * PosterCard - Editorial, Nike-inspired design
  * Large hero image with overlay info and decorative accents
+ * 
+ * ✨ IMPROVED VERSION - Better matches original design while keeping all logic
  */
 export const PosterCard = ({ 
   title, 
@@ -21,18 +23,19 @@ export const PosterCard = ({
   glassMode = false,
 }: ProductCardVisualProps) => {
   
-  // Calculate inner radius
+  // ✅ Keep your radius calculation logic
   const innerRadius = `calc(${borderRadius} - 0.5rem)`;
   
-  // Get condition and specs from tags
+  // ✅ Keep your tag extraction logic
   const condition = tags?.[0] || 'New';
+  const description = tags?.[1] || 'Step back into classic style with a durable leather.';
 
-  // Card container styles
+  // ✅ Keep your card style logic
   const cardStyle = glassMode ? {
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
     backdropFilter: 'blur(16px)',
     WebkitBackdropFilter: 'blur(16px)',
-    border: '1px solid rgba(255, 255, 255, 0.4)',
+    border: '1px solid rgba(255, 255, 255, 0.5)',
     borderRadius,
   } : {
     backgroundColor: 'white',
@@ -42,36 +45,36 @@ export const PosterCard = ({
   return (
     <Link href={href} className="group block h-full select-none">
       <div 
-        className="relative p-2 shadow-sm hover:shadow-2xl transition-all duration-500 h-full flex flex-col overflow-hidden"
+        className="relative shadow-lg hover:shadow-2xl transition-all duration-300 h-full flex flex-col overflow-hidden"
         style={cardStyle}
       >
-        {/* Hero Image Area */}
+        {/* Hero Image Area - IMPROVED: Fixed tall height instead of aspect ratio */}
         <div 
-          className="relative aspect-[4/5] w-full overflow-hidden bg-gradient-to-br from-slate-100 to-slate-200"
+          className="relative h-96 w-full overflow-hidden bg-gradient-to-br from-slate-100 via-slate-200 to-slate-300"
           style={{ borderRadius: innerRadius }}
         >
-          {/* Featured Badge */}
+          {/* Featured Badge - IMPROVED: Better text, darker background */}
+          {/* ✅ Keep your conditional rendering logic */}
           {isFeatured && (
-            <div 
-              className="absolute top-3 left-3 z-10 px-3 py-1.5 rounded-lg text-[10px] font-bold text-white uppercase tracking-wider shadow-lg"
-              style={{ backgroundColor: primaryColor }}
-            >
-              Featured
+            <div className="absolute top-6 left-6 z-10 px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-900/80 backdrop-blur-sm text-white shadow-lg">
+              Best Seller
             </div>
           )}
           
-          {/* Decorative Icon */}
-          <div className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-sm">
-            <Sparkles size={14} style={{ color: primaryColor }} />
+          {/* Decorative Icon - ✅ Keep your positioning and icon */}
+          <div className="absolute top-6 right-6 z-10 w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center">
+            <Sparkles size={20} style={{ color: primaryColor }} />
           </div>
 
-          {/* Decorative Accent Dots */}
-          <div className="absolute top-1/4 left-3 flex flex-col gap-2 opacity-60">
-            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: primaryColor }} />
-            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: primaryColor }} />
-            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: primaryColor }} />
+          {/* Decorative Accent Dots - IMPROVED: Bigger, red color like Nike, with blur */}
+          <div className="absolute top-1/3 left-6 flex flex-col gap-3 z-10">
+            <div className="w-3 h-3 rounded-full blur-[1px]" style={{ backgroundColor: '#ef4444' }} />
+            <div className="w-3 h-3 rounded-full blur-[1px]" style={{ backgroundColor: '#ef4444' }} />
+            <div className="w-3 h-3 rounded-full blur-[1px]" style={{ backgroundColor: '#ef4444' }} />
           </div>
 
+          {/* Product Image */}
+          {/* ✅ Keep your imageUrl conditional logic */}
           {imageUrl ? (
             <img 
               src={imageUrl} 
@@ -80,39 +83,48 @@ export const PosterCard = ({
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-slate-300">
-              <ShoppingBag size={48} strokeWidth={1} />
+              <ShoppingBag size={64} strokeWidth={1} />
             </div>
           )}
 
-          {/* Bottom Gradient Overlay */}
-          <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/60 to-transparent" />
-          
-          {/* Overlay Content */}
-          <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
-            <p className="text-[10px] font-bold uppercase tracking-widest opacity-80 mb-1">
-              {condition}
-            </p>
-            <h3 className="text-lg font-bold leading-tight line-clamp-2">
-              {title}
-            </h3>
+          {/* Carousel Dots - IMPROVED: Added like original Nike card */}
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-10">
+            <div className="w-2 h-2 rounded-full bg-white" />
+            <div className="w-6 h-2 rounded-full bg-white" />
+            <div className="w-2 h-2 rounded-full bg-white/50" />
+            <div className="w-2 h-2 rounded-full bg-white/50" />
           </div>
         </div>
 
-        {/* Footer: Price and CTA */}
-        <div className="pt-3 px-1 pb-1 flex items-center justify-between gap-2">
-          <div className="bg-slate-100/80 rounded-xl px-4 py-2">
-            <div className="flex items-baseline gap-1">
-              <span className="text-[10px] text-slate-400 font-medium">from</span>
-              <span className="text-lg font-black text-slate-900">{price}</span>
-            </div>
+        {/* Product Info - IMPROVED: Moved outside image, better layout like original */}
+        <div className="p-6 flex flex-col gap-3">
+          <div>
+            <h3 className="text-2xl font-bold text-slate-900 mb-1">
+              {title}
+            </h3>
+            <p className="text-slate-400 text-sm font-medium mb-2">
+              {condition}
+            </p>
+            <p className="text-slate-500 text-sm leading-relaxed">
+              {description}
+            </p>
           </div>
-          <button 
-            className="flex-1 py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white transition-all duration-300 hover:opacity-90 shadow-md"
-            style={{ backgroundColor: primaryColor }}
-          >
-            Shop Now
-            <ArrowRight size={14} />
-          </button>
+
+          {/* Footer: Price and CTA - IMPROVED: Much bigger, better proportions */}
+          <div className="flex items-center gap-3 pt-2">
+            <div className="bg-slate-100 rounded-2xl px-6 py-3">
+              <span className="text-3xl font-bold text-slate-900">
+                {price}
+              </span>
+            </div>
+            <button 
+              className="flex-1 py-3.5 rounded-full flex items-center justify-center gap-2 font-medium text-white transition-all duration-300 hover:opacity-90 shadow-lg text-base"
+              style={{ backgroundColor: primaryColor }}
+            >
+              Buy Now
+              <ArrowRight size={18} />
+            </button>
+          </div>
         </div>
       </div>
     </Link>

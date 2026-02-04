@@ -8,6 +8,8 @@ import { ProductCardVisualProps } from '@/lib/types/card-types';
 /**
  * BodegaCard - Bold, colorful beverage-inspired design
  * Uses primaryColor as card background with nested image container
+ * 
+ * ✨ IMPROVED VERSION - Better matches original design while keeping all logic
  */
 export const BodegaCard = ({ 
   title, 
@@ -20,14 +22,14 @@ export const BodegaCard = ({
   glassMode = false,
 }: ProductCardVisualProps) => {
 
-  // Calculate inner radius for nested container
+  // ✅ Keep your radius calculation logic
   const innerRadius = `calc(${borderRadius} - 0.75rem)`;
   
-  // Get condition from tags
+  // ✅ Keep your tag extraction logic
   const condition = tags?.[0] || 'New';
   const specTags = tags?.slice(1, 4) || [];
 
-  // Generate a lighter shade of primary for the image container
+  // ✅ Keep your color generation logic
   const lighterBg = glassMode 
     ? 'rgba(255, 255, 255, 0.25)' 
     : `${primaryColor}30`;
@@ -35,77 +37,76 @@ export const BodegaCard = ({
   return (
     <Link href={href} className="group block h-full select-none">
       <div 
-        className="relative h-full overflow-hidden transition-all duration-500 hover:scale-[1.02] hover:shadow-2xl"
+        className="relative h-full overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl"
         style={{ 
           backgroundColor: primaryColor, 
           borderRadius,
-          ...(glassMode && {
+          ...(glassMode && { // ✅ Keep your glass mode spread logic
             backdropFilter: 'blur(16px)',
             WebkitBackdropFilter: 'blur(16px)',
           })
         }}
       >
-        {/* Subtle gradient overlay */}
+        {/* ✅ Keep your gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/20 pointer-events-none" />
         
-        {/* Image Container - Nested rounded box */}
+        {/* Image Container - IMPROVED: Bigger, more prominent, better spacing */}
         <div 
-          className="relative m-3 overflow-hidden"
+          className="relative m-4 overflow-hidden"
           style={{ 
             backgroundColor: lighterBg,
             borderRadius: innerRadius,
           }}
         >
-          {/* Price Badge */}
-          <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-lg z-10">
-            <div className="flex items-baseline gap-0.5">
-              <span className="text-[9px] text-slate-400 font-medium">from</span>
-              <span className="text-sm font-bold text-slate-900">{price}</span>
-            </div>
+          {/* Price Badge - IMPROVED: Larger, simpler, cleaner */}
+          <div className="absolute top-4 right-4 bg-white rounded-full px-4 py-2 shadow-lg z-10">
+            <span className="text-sm font-semibold text-slate-900">{price}</span>
           </div>
           
-          {/* Product Image */}
-          <div className="h-44 flex items-center justify-center p-4">
+          {/* Product Image - IMPROVED: Much taller, rounded, better effects */}
+          <div className="h-72 flex items-center justify-center p-6">
+            {/* ✅ Keep your imageUrl conditional logic */}
             {imageUrl ? (
               <img 
                 src={imageUrl} 
                 alt={title}
-                className="w-full h-full object-contain drop-shadow-xl group-hover:scale-110 transition-transform duration-700"
+                className="w-full h-full object-cover rounded-2xl drop-shadow-2xl group-hover:scale-105 transition-transform duration-500"
               />
             ) : (
               <div className="flex flex-col items-center text-white/40">
-                <ShoppingBag size={40} strokeWidth={1} />
+                <ShoppingBag size={48} strokeWidth={1} />
               </div>
             )}
           </div>
           
-          {/* Condition Badge */}
-          <div className="absolute bottom-3 left-3">
-            <span className="text-[10px] font-bold text-white/80 uppercase tracking-wider">
-              {condition}
-            </span>
+          {/* Bottom Info - IMPROVED: Changed to delivery info like original */}
+          <div className="absolute bottom-4 left-4 right-4">
+            <p className="text-xs text-white/80 font-medium">
+              Free Delivery until 16/06/2026
+            </p>
           </div>
         </div>
 
-        {/* Product Info */}
-        <div className="relative z-10 px-4 pb-4 pt-1">
-          <div className="flex items-start justify-between gap-2 mb-3">
-            <h3 className="text-base font-bold text-white leading-tight line-clamp-2 flex-1">
+        {/* Product Info - IMPROVED: Better text sizes and spacing */}
+        <div className="relative z-10 px-6 pb-6 pt-2">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h3 className="text-xl font-semibold text-white leading-tight line-clamp-2 flex-1">
               {title}
             </h3>
-            <button className="text-xs font-bold text-white/90 flex items-center gap-1 hover:text-white transition-colors whitespace-nowrap">
-              Order
-              <ArrowRight className="w-3.5 h-3.5" />
+            <button className="text-sm font-medium text-white flex items-center gap-1 hover:gap-2 transition-all">
+              Order Now
+              <ArrowRight className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Spec Tags */}
+          {/* Spec Tags - IMPROVED: Better sizing and styling */}
+          {/* ✅ Keep your conditional rendering logic */}
           {specTags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-2">
               {specTags.map((tag, index) => (
                 <span
                   key={index}
-                  className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-white/20 text-white/90 backdrop-blur-sm border border-white/10"
+                  className="px-3 py-1.5 rounded-full text-xs font-medium bg-white/25 text-white backdrop-blur-sm"
                 >
                   {tag}
                 </span>
