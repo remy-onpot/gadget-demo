@@ -60,11 +60,30 @@ export const ProductCard = ({
   // 3. Resolve Image (First image or null)
   const imageUrl = product.base_images?.[0] || null;
 
-  // 4. Resolve Tags (For Bodega/Poster cards)
+  // 4. Resolve Tags: [condition, ...specs]
+  // First tag = condition (e.g., "Brand New", "UK Used")
+  // Remaining tags = key specs from variant or product metadata
   const tags: string[] = [];
+  
+  // Get condition from first variant
+  const condition = product.variants?.[0]?.condition;
+  if (condition) tags.push(condition);
+  
+  // Add category as a spec if available
   if (product.categories?.name) tags.push(product.categories.name);
-  if (product.variants?.[0]?.condition) tags.push(product.variants[0].condition);
-  if (!tags.length && product.brand) tags.push(product.brand);
+  
+  // Add brand if available
+  if (product.brand) tags.push(product.brand);
+  
+  // Add any additional specs from variant (e.g., storage, color)
+  const variant = product.variants?.[0];
+  if (variant) {
+    // Check for common spec fields that might exist
+    const specs = variant as Record<string, unknown>;
+    if (specs.storage) tags.push(String(specs.storage));
+    if (specs.color) tags.push(String(specs.color));
+    if (specs.ram) tags.push(String(specs.ram));
+  }
 
   // 5. Actions
   const handleAddToCart = (e: React.MouseEvent) => {

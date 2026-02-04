@@ -1,59 +1,101 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
-import { ArrowRight, Heart, ShoppingBag } from 'lucide-react';
+import { Heart, Plus, ShoppingBag } from 'lucide-react';
 import { ProductCardVisualProps } from '@/lib/types/card-types';
 
+/**
+ * TechCard - Clean, minimal furniture-inspired design
+ * Centered layout with pill-shaped price bar and add button
+ */
 export const TechCard = ({ 
-  title, price, imageUrl, href, primaryColor, borderRadius = '1rem', glassMode = false 
+  title, 
+  price, 
+  imageUrl, 
+  href, 
+  tags,
+  primaryColor,
+  borderRadius = '2rem', 
+  glassMode = false,
+  onAddToCart,
 }: ProductCardVisualProps) => {
   
   // Glass mode styles
   const cardStyle = glassMode ? {
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
-    border: '1px solid rgba(255, 255, 255, 0.5)',
+    backgroundColor: 'rgba(255, 255, 255, 0.65)',
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)',
+    border: '1px solid rgba(255, 255, 255, 0.4)',
     borderRadius,
   } : {
     backgroundColor: 'white',
     borderRadius,
   };
 
+  // Get condition from tags (first tag is usually condition)
+  const condition = tags?.[0] || 'New';
+
   return (
-    <Link href={href} className="group h-full block select-none">
+    <Link href={href} className="group block h-full select-none">
       <div 
-        className="h-full border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col overflow-hidden"
+        className="relative h-full p-5 shadow-sm hover:shadow-2xl transition-all duration-500 flex flex-col overflow-hidden"
         style={cardStyle}
       >
-        
-        {/* Image Area */}
-        <div className="relative h-56 w-full p-6 flex items-center justify-center">
-          <button className="absolute top-4 right-4 z-10 p-2 rounded-xl bg-gray-50/80 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-            <Heart size={18} />
+        {/* Product Image */}
+        <div className="relative mb-4 flex items-center justify-center h-48 bg-slate-50/80 rounded-2xl overflow-hidden">
+          {/* Favorite Button */}
+          <button
+            onClick={(e) => { e.preventDefault(); }}
+            className="absolute top-3 right-3 z-10 w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 hover:scale-110"
+            style={{ backgroundColor: `${primaryColor}15` }}
+          >
+            <Heart 
+              className="w-5 h-5 transition-colors"
+              style={{ color: primaryColor }}
+            />
           </button>
           
           {imageUrl ? (
-            <img src={imageUrl} alt={title} className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500" />
+            <img 
+              src={imageUrl} 
+              alt={title} 
+              className="w-[85%] h-[85%] object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-700" 
+            />
           ) : (
-            <div className="flex flex-col items-center text-gray-300">
+            <div className="flex flex-col items-center text-slate-300">
               <ShoppingBag size={40} strokeWidth={1} />
             </div>
           )}
         </div>
 
-        {/* Info */}
-        <div className="px-6 pb-6 pt-2 flex-1 flex flex-col">
-          <h3 className="font-bold text-slate-900 text-base leading-tight line-clamp-2 mb-4">{title}</h3>
-          
-          <div className="mt-auto bg-slate-50/80 rounded-full p-1.5 pl-4 flex items-center justify-between group-hover:bg-slate-100 transition-colors">
-            <span className="font-bold text-slate-900 text-sm">{price}</span>
-            <div 
-              className="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-md"
-              style={{ backgroundColor: primaryColor }}
-            >
-              <ArrowRight size={16} strokeWidth={2.5} />
+        {/* Product Info - Centered */}
+        <div className="text-center mb-4 flex-1">
+          <h3 className="text-base font-bold text-slate-900 mb-1 line-clamp-2 leading-tight">
+            {title}
+          </h3>
+          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide">
+            {condition}
+          </p>
+        </div>
+
+        {/* Price and Add Button */}
+        <div className="flex items-center gap-2">
+          <div className="bg-slate-100/80 group-hover:bg-slate-100 rounded-full px-4 py-2.5 flex-1 transition-colors">
+            <div className="flex items-baseline gap-1 justify-center">
+              <span className="text-[10px] text-slate-400 font-medium">from</span>
+              <span className="text-lg font-bold text-slate-900">
+                {price}
+              </span>
             </div>
           </div>
+          <button 
+            onClick={onAddToCart}
+            className="w-11 h-11 rounded-full flex items-center justify-center transition-all duration-300 hover:scale-110 shadow-lg text-white"
+            style={{ backgroundColor: primaryColor }}
+          >
+            <Plus className="w-5 h-5" />
+          </button>
         </div>
       </div>
     </Link>

@@ -8,6 +8,127 @@ import { CardType } from '@/lib/types';
 import { toast } from 'sonner';
 import { THEME_PRESETS, getContrastColor, getContrastScore, isValidHex, suggestAccessibleColor } from '@/lib/theme-generator';
 
+// Import actual card components for live preview
+import { TechCard } from '@/components/TechCard';
+import { BodegaCard } from '@/components/BodegaCard';
+import { PosterCard } from '@/components/PosterCard';
+import { GadgetCard } from '@/components/GadgetCard';
+
+// Mock products for preview
+const PREVIEW_PRODUCTS = [
+  // Tech & Gadgets
+  {
+    title: 'iPhone 15 Pro Max',
+    price: 'GHS 12,500',
+    imageUrl: 'https://store.storeimages.cdn-apple.com/4982/as-images.apple.com/is/iphone-15-pro-finish-select-202309-6-1inch_GEO_EMEA?wid=400&hei=400&fmt=png-alpha',
+    category: 'Phones',
+    href: '#',
+    tags: ['Brand New', 'Phones', '256GB'],
+    isFeatured: true,
+  },
+  {
+    title: 'MacBook Air M3',
+    price: 'GHS 18,000',
+    imageUrl: 'https://store.storeimages.cdn-apple.com/4982/as-images.apple.com/is/mba13-midnight-select-202402?wid=400&hei=400&fmt=png-alpha',
+    category: 'Laptops',
+    href: '#',
+    tags: ['UK Used', 'Laptops', '8GB RAM'],
+    isFeatured: false,
+  },
+  {
+    title: 'AirPods Pro 2',
+    price: 'GHS 2,800',
+    imageUrl: 'https://store.storeimages.cdn-apple.com/4982/as-images.apple.com/is/MQD83?wid=400&hei=400&fmt=png-alpha',
+    category: 'Audio',
+    href: '#',
+    tags: ['Brand New', 'Audio', 'Wireless'],
+    isFeatured: false,
+  },
+  {
+    title: 'Samsung Galaxy S24',
+    price: 'GHS 9,500',
+    imageUrl: 'https://images.samsung.com/is/image/samsung/p6pim/gh/2401/gallery/gh-galaxy-s24-sm-s921bzagegy-thumb-539573180?$172_172_PNG$',
+    category: 'Phones',
+    href: '#',
+    tags: ['Brand New', 'Phones', '128GB'],
+    isFeatured: true,
+  },
+  // Fashion
+  {
+    title: 'Classic White Shirt',
+    price: 'GHS 280',
+    imageUrl: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400&h=400&fit=crop',
+    category: 'Shirts',
+    href: '#',
+    tags: ['Brand New', 'Shirts', 'Cotton'],
+    isFeatured: false,
+  },
+  {
+    title: 'Denim Jacket',
+    price: 'GHS 450',
+    imageUrl: 'https://images.unsplash.com/photo-1551028719-00167b16ebc5?w=400&h=400&fit=crop',
+    category: 'Dresses',
+    href: '#',
+    tags: ['Brand New', 'Dresses', 'Denim'],
+    isFeatured: false,
+  },
+  {
+    title: 'Premium Sneakers',
+    price: 'GHS 650',
+    imageUrl: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=400&fit=crop',
+    category: 'Shoes',
+    href: '#',
+    tags: ['Brand New', 'Shoes', 'Unisex'],
+    isFeatured: true,
+  },
+  {
+    title: 'Casual T-Shirt',
+    price: 'GHS 150',
+    imageUrl: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400&h=400&fit=crop',
+    category: 'Shirts',
+    href: '#',
+    tags: ['Brand New', 'Shirts', 'Cotton-Blend'],
+    isFeatured: false,
+  },
+  // More Tech
+  {
+    title: 'iPad Pro 12.9"',
+    price: 'GHS 8,200',
+    imageUrl: 'https://store.storeimages.cdn-apple.com/4982/as-images.apple.com/is/ipad-pro-select-wifi-spacegray-202402?wid=400&hei=400&fmt=png-alpha',
+    category: 'Tablets',
+    href: '#',
+    tags: ['Brand New', 'Tablets', '256GB'],
+    isFeatured: false,
+  },
+  {
+    title: 'Sony WH-1000XM5 Headphones',
+    price: 'GHS 3,500',
+    imageUrl: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&h=400&fit=crop',
+    category: 'Audio',
+    href: '#',
+    tags: ['Brand New', 'Audio', 'Noise-Cancelling'],
+    isFeatured: false,
+  },
+  {
+    title: 'Nike Air Force 1',
+    price: 'GHS 580',
+    imageUrl: 'https://images.unsplash.com/photo-1460353581641-37baddab0fa2?w=400&h=400&fit=crop',
+    category: 'Shoes',
+    href: '#',
+    tags: ['Brand New', 'Shoes', 'Classic'],
+    isFeatured: false,
+  },
+  {
+    title: 'Floral Dress',
+    price: 'GHS 520',
+    imageUrl: 'https://images.unsplash.com/photo-1612336307429-8a88e8d08dbb?w=400&h=400&fit=crop',
+    category: 'Dresses',
+    href: '#',
+    tags: ['Brand New', 'Dresses', 'Summer'],
+    isFeatured: false,
+  },
+];
+
 export default function ThemeSettingsPage() {
   const { storeId, loading: authLoading } = useAdminData();
   
@@ -24,6 +145,7 @@ export default function ThemeSettingsPage() {
   const [isPending, startTransition] = useTransition();
   const [dataLoading, setDataLoading] = useState(true);
   const [activeView, setActiveView] = useState<'mobile' | 'desktop'>('mobile');
+  const [previewCategory, setPreviewCategory] = useState<string>('All');
 
   // Load Data
   useEffect(() => {
@@ -323,7 +445,7 @@ export default function ThemeSettingsPage() {
 
         {/* LIVE PREVIEW */}
         <div className="lg:col-span-8 sticky top-6">
-           <div className={`mx-auto transition-all duration-500 ease-in-out border-8 border-slate-900 rounded-[2.5rem] overflow-hidden shadow-2xl bg-white ${activeView === 'mobile' ? 'w-[375px] h-[700px]' : 'w-full h-[600px]'}`}>
+           <div className={`mx-auto transition-all duration-500 ease-in-out border-8 border-slate-900 rounded-[2.5rem] overflow-hidden shadow-2xl bg-white ${activeView === 'mobile' ? 'w-[375px] h-[750px]' : 'w-full h-[650px]'}`}>
               {/* PREVIEW CONTENT */}
               <div 
                  className="h-full w-full overflow-y-auto"
@@ -338,35 +460,91 @@ export default function ThemeSettingsPage() {
                  {/* Preview Navbar */}
                  <div style={getPreviewCardStyle()} className="px-4 py-3 flex justify-between items-center sticky top-0 z-10 mb-4">
                     <div className="w-8 h-8 rounded-lg" style={{ backgroundColor: theme.primary_color }} />
+                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      {theme.card_type} Card
+                    </div>
                     <div className="w-8 h-8 rounded-full bg-slate-200/50" />
                  </div>
                  
                  <div className="px-4 space-y-6 pb-20">
                      {/* Banner */}
-                     <div className="w-full aspect-[2/1] bg-slate-200/50 relative overflow-hidden flex items-center justify-center" style={{ borderRadius: theme.border_radius }}>
-                        <h2 className="text-xl md:text-3xl font-black mix-blend-overlay opacity-50">THEME PREVIEW</h2>
-                        <button className="absolute bottom-4 left-4 px-5 py-2 text-white font-bold text-xs shadow-lg" style={{ backgroundColor: theme.primary_color, borderRadius: theme.border_radius }}>Shop Now</button>
+                     <div className="w-full aspect-[2/1] bg-gradient-to-br from-slate-200/50 to-slate-300/30 relative overflow-hidden flex items-center justify-center" style={{ borderRadius: theme.border_radius }}>
+                        <div className="text-center">
+                           <h2 className="text-lg md:text-2xl font-black text-slate-400/60">LIVE PREVIEW</h2>
+                           <p className="text-xs text-slate-400/50 mt-1">Changes update in real-time</p>
+                        </div>
+                        <button className="absolute bottom-4 left-4 px-5 py-2 text-white font-bold text-xs shadow-lg transition-transform hover:scale-105" style={{ backgroundColor: theme.primary_color, borderRadius: theme.border_radius }}>Shop Now</button>
                      </div>
                      
-                     {/* Categories */}
-                     <div className="flex gap-2 overflow-x-auto pb-2">
-                         {['All', 'Shoes', 'Shirts', 'Tech'].map((c, i) => (
-                             <div key={c} className={`px-4 py-1.5 text-xs font-bold whitespace-nowrap border ${i===0 ? 'text-white border-transparent' : 'border-current opacity-60'}`} style={{ backgroundColor: i===0 ? theme.primary_color : 'transparent', borderRadius: theme.border_radius }}>{c}</div>
-                         ))}
-                     </div>
+                     {/* Categories - Dynamic */}
+                     {(() => {
+                       const categories = ['All', ...new Set(PREVIEW_PRODUCTS.map(p => p.category))];
+                       return (
+                         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                           {categories.map((cat, i) => (
+                             <button
+                               key={cat}
+                               onClick={() => setPreviewCategory(cat)}
+                               className={`px-4 py-1.5 text-xs font-bold whitespace-nowrap border transition-all ${
+                                 previewCategory === cat
+                                   ? 'text-white border-transparent'
+                                   : 'border-current opacity-60 hover:opacity-80'
+                               }`}
+                               style={{
+                                 backgroundColor: previewCategory === cat ? theme.primary_color : 'transparent',
+                                 borderRadius: theme.border_radius
+                               }}
+                             >
+                               {cat}
+                             </button>
+                           ))}
+                         </div>
+                       );
+                     })()}
                      
-                     {/* Product Grid */}
-                     <div className={`grid gap-4 ${activeView === 'mobile' ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                        {[1, 2, 3, 4].map(i => (
-                           <div key={i} className="p-3 transition-all" style={getPreviewCardStyle()}>
-                              <div className="aspect-square bg-slate-200/50 mb-3" style={{ borderRadius: `calc(${theme.border_radius} / 1.5)` }} />
-                              <div className="h-3 w-3/4 bg-current opacity-10 rounded mb-2" />
-                              <div className="flex justify-between items-center">
-                                 <div className="h-4 w-1/3 bg-current opacity-20 rounded" />
-                                 <div className="w-8 h-8 flex items-center justify-center text-white" style={{ backgroundColor: theme.primary_color, borderRadius: `calc(${theme.border_radius} / 2)` }}>+</div>
-                              </div>
-                           </div>
-                        ))}
+                     {/* Live Product Cards - Filtered by Category */}
+                     {(() => {
+                       const filteredProducts = previewCategory === 'All'
+                         ? PREVIEW_PRODUCTS
+                         : PREVIEW_PRODUCTS.filter(p => p.category === previewCategory);
+
+                       const displayCount = activeView === 'mobile' ? 4 : 3;
+                       const productsToShow = filteredProducts.slice(0, displayCount);
+
+                       return (
+                         <div className={`grid gap-3 ${activeView === 'mobile' ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                           {productsToShow.map((product, i) => {
+                             const cardProps = {
+                               ...product,
+                               primaryColor: theme.primary_color,
+                               borderRadius: theme.border_radius,
+                               glassMode: theme.glass_mode,
+                             };
+                             
+                             switch (theme.card_type) {
+                               case 'bodega':
+                                 return <BodegaCard key={i} {...cardProps} />;
+                               case 'poster':
+                                 return <PosterCard key={i} {...cardProps} />;
+                               case 'gadget':
+                                 return <GadgetCard key={i} {...cardProps} />;
+                               case 'tech':
+                               default:
+                                 return <TechCard key={i} {...cardProps} />;
+                             }
+                           })}
+                         </div>
+                       );
+                     })()}
+
+                     {/* Card Type Label */}
+                     <div className="text-center pt-4">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                          {theme.card_type === 'tech' && '🔳 Tech Card — Clean & Minimal'}
+                          {theme.card_type === 'gadget' && '✨ Gadget Card — Specs & Icons'}
+                          {theme.card_type === 'bodega' && '🏷️ Bodega Card — Bold & Colorful'}
+                          {theme.card_type === 'poster' && '🖼️ Poster Card — Editorial Hero'}
+                        </span>
                      </div>
                  </div>
               </div>

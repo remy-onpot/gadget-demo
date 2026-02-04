@@ -12,7 +12,7 @@ const supabaseAdmin = createClient<Database>(
 // We strictly define what we accept from the client.
 // Notice we REMOVED 'unit_price' and 'total' - we will calculate these.
 interface OrderPayload {
-  slug: string;
+  storeId: string; // Changed from slug to storeId
   customer: {
     name: string;
     email: string;
@@ -30,11 +30,11 @@ interface OrderPayload {
 
 export async function submitOrder(payload: OrderPayload) {
   try {
-    // 1. Get Store ID & Settings
+    // 1. Get Store Settings (store already validated in page.tsx)
     const { data: store, error: storeError } = await supabaseAdmin
       .from('stores')
       .select('id, settings')
-      .eq('slug', payload.slug)
+      .eq('id', payload.storeId)
       .single();
 
     if (storeError || !store) throw new Error('Store not found');
@@ -130,7 +130,7 @@ export async function submitOrder(payload: OrderPayload) {
     return { 
       success: true, 
       orderId: order.id, 
-      whatsappPhone: settings.whatsapp_phone || settings.support_phone 
+      whatsappPhone: settings?.whatsapp_phone || settings?.contact_phone || settings?.support_phone
     };
 
   } catch (error: any) {
