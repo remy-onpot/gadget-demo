@@ -168,6 +168,25 @@ export interface SiteSetting {
   label: string;
 }
 
+// --- STORE THEME SETTINGS ---
+export type CardType = 'tech' | 'bodega' | 'poster' | 'gadget';
+
+export interface StoreThemeSettings {
+  // Colors
+  primary_color: string;
+  bg_color: string;
+  card_bg_color: string;
+  text_color: string;
+  
+  // Shape & Style
+  border_radius: string;
+  glass_mode: boolean;
+  card_type: CardType;
+  
+  // Legacy/other settings can still exist
+  [key: string]: string | boolean | undefined;
+}
+
 export interface FilterRule {
   key: string;       
   field?: string;    // Kept for backward compatibility if needed

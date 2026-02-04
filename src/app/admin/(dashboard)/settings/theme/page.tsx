@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useTransition } from 'react';
 import { useAdminData } from '@/hooks/useAdminData';
 import { getStoreSettings, updateStoreSettings } from '@/app/admin/(dashboard)/actions';
-import { Save, Loader2, Palette, Smartphone, Monitor, AlertTriangle, Wand2, Sparkles } from 'lucide-react';
+import { Save, Loader2, Palette, Smartphone, Monitor, AlertTriangle, Wand2, Sparkles, LayoutGrid } from 'lucide-react';
+import { CardType } from '@/lib/types';
 import { toast } from 'sonner';
 import { THEME_PRESETS, getContrastColor, getContrastScore, isValidHex, suggestAccessibleColor } from '@/lib/theme-generator';
 
@@ -16,7 +17,8 @@ export default function ThemeSettingsPage() {
     card_bg_color: '#FFFFFF', 
     text_color: '#0F172A', 
     border_radius: '1rem',    
-    glass_mode: false, // ✨ NEW: Glassmorphism State
+    glass_mode: false,
+    card_type: 'tech' as CardType, // Card style selection
   });
 
   const [isPending, startTransition] = useTransition();
@@ -37,7 +39,8 @@ export default function ThemeSettingsPage() {
             card_bg_color: data.card_bg_color || '#FFFFFF',
             text_color: data.text_color || '#0F172A',
             border_radius: data.border_radius || '1rem',
-            glass_mode: data.glass_mode || false, // Load from DB
+            glass_mode: data.glass_mode || false,
+            card_type: (data.card_type as CardType) || 'tech',
           }));
         }
       } finally {
@@ -88,7 +91,8 @@ export default function ThemeSettingsPage() {
           card_bg_color: preset.colors.card,
           text_color: getContrastColor(preset.colors.bg),
           border_radius: preset.radius,
-          glass_mode: false, // Reset glass mode on preset change
+          glass_mode: false,
+          card_type: theme.card_type, // Preserve card type on preset change
       });
       toast.success(`Applied ${preset.name} theme`);
   };
@@ -194,6 +198,35 @@ export default function ThemeSettingsPage() {
               
               {/* Decorative background glow */}
               <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-indigo-200/50 rounded-full blur-2xl pointer-events-none" />
+           </div>
+
+           {/* 🎴 CARD TYPE SELECTOR */}
+           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wider">
+                 <LayoutGrid size={16} className="text-orange-500"/> Card Style
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                 {([
+                   { id: 'tech', name: 'Tech', desc: 'Clean, minimal with pill button', preview: '🔳' },
+                   { id: 'gadget', name: 'Gadget', desc: 'Category icons, glow effects', preview: '✨' },
+                   { id: 'bodega', name: 'Bodega', desc: 'Bold colors, tag badges', preview: '🏷️' },
+                   { id: 'poster', name: 'Poster', desc: 'Cover image, editorial look', preview: '🖼️' },
+                 ] as const).map(card => (
+                    <button 
+                       key={card.id}
+                       onClick={() => setTheme(prev => ({ ...prev, card_type: card.id }))}
+                       className={`p-4 rounded-xl border-2 text-left transition-all ${
+                         theme.card_type === card.id 
+                           ? 'border-indigo-600 bg-indigo-50 shadow-sm' 
+                           : 'border-slate-100 hover:border-slate-200 bg-slate-50/50'
+                       }`}
+                    >
+                       <div className="text-2xl mb-2">{card.preview}</div>
+                       <div className="font-bold text-sm text-slate-900">{card.name}</div>
+                       <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">{card.desc}</div>
+                    </button>
+                 ))}
+              </div>
            </div>
 
            {/* COLORS */}

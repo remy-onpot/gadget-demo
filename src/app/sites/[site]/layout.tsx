@@ -10,6 +10,8 @@ import { Toaster } from 'sonner';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { StoreInitializer } from '@/components/storefront/StoreInitializer';
+import { ThemeWrapper } from '@/components/storefront/ThemeWrapper';
+import { CardType } from '@/lib/types';
 
 // Database & Services
 import { createClient } from "@/lib/supabase-server";
@@ -106,6 +108,16 @@ export default async function SiteLayout({
     '--primary-20': `${primary}33`, // 20% opacity
   } as React.CSSProperties;
 
+  // Theme context values for ProductCard and other components
+  // Note: settings values may be strings or booleans from JSON
+  const storefrontTheme = {
+    primaryColor: primary,
+    cardType: (settings.card_type as CardType) || 'tech',
+    borderRadius: settings.border_radius || '1rem',
+    glassMode: String(settings.glass_mode) === 'true',
+    cardBgColor: settings.card_bg_color || '#FFFFFF',
+  };
+
   // 3. PAGE ISOLATION LOGIC
   const headerList = await headers();
   const pathname = headerList.get("x-pathname") || ""; 
@@ -152,7 +164,9 @@ export default async function SiteLayout({
             {!isIsolatedPage && <Header settings={settings} categories={categories} />}
             
             <main className={`flex-grow ${!isIsolatedPage ? 'pt-[72px] md:pt-[80px]' : ''}`}>
-              {children}
+              <ThemeWrapper theme={storefrontTheme}>
+                {children}
+              </ThemeWrapper>
             </main>
 
             {!isIsolatedPage && <Footer settings={settings} categories={categories} />}

@@ -5,10 +5,11 @@ import {
   CheckCircle, XCircle, Loader2, Clock, 
   MapPin, Store, FileText, Mail, 
   ExternalLink, ChevronDown, ChevronUp, ShieldCheck,
-  MessageCircle, Copy, Key, Globe, X
+  MessageCircle, Copy, Key, Globe, X, DollarSign, AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { approveApplication, rejectApplication } from '@/actions/application-actions';
+import { verifyPayment } from '@/actions/payment-actions';
 import { cn } from '@/lib/utils';
 
 interface Application {
@@ -25,6 +26,13 @@ interface Application {
   status: string | null;
   rejection_reason: string | null;
   created_at: string | null;
+  // Payment fields
+  transaction_id: string | null;
+  payment_amount: number | null;
+  payment_date: string | null;
+  payment_verified: boolean | null;
+  payment_verified_at: string | null;
+  payment_notes: string | null;
 }
 
 interface Credentials {
@@ -45,12 +53,29 @@ export function PendingApplications({ applications }: Props) {
   const [rejectModalId, setRejectModalId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [isPending, startTransition] = useTransition();
+  const [verifyingPaymentId, setVerifyingPaymentId] = useState<string | null>(null);
   
   // Credentials modal state
   const [credentialsModal, setCredentialsModal] = useState<Credentials | null>(null);
 
-  const pendingApps = applications.filter(a => a.status === 'pending');
-  const processedApps = applications.filter(a => a.status !== 'pending');
+  // Filter applications by payment status
+  const pendingPayment = applications.filter(a => a.status === 'pending' && !a.transaction_id);
+  const paymentSubmitted = applications.filter(a => a.status === 'payment_submitted' && !a.payment_verified);
+  const paymentVerified = applications.filter(a => a.payment_verified && a.status !== 'approved' && a.status !== 'rejected');
+  const processedApps = applications.filter(a => a.status === 'approved' || a.status === 'rejected');
+
+  const handleVerifyPayment = (appId: string, verified: boolean, adminId: string) => {
+    setVerifyingPaymentId(appId);
+    startTransition(async () => {
+      const result = await verifyPayment(appId, adminId, verified);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success(verified ? 'Payment verified!' : 'Payment rejected');
+      }
+      setVerifyingPaymentId(null);
+    });
+  };
 
   const handleApprove = (app: Application) => {
     setProcessingId(app.id);
@@ -161,26 +186,40 @@ Need help? Reply to this message!`;
 
   return (
     <div className="space-y-6">
-      {/* Pending Applications */}
+      {/* Applications Requiring Action */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-amber-50/50">
           <h3 className="font-bold text-slate-900 flex items-center gap-2">
             <Clock size={18} className="text-amber-500" /> 
-            Pending Applications
+            Pending Review
           </h3>
-          <span className="text-xs font-bold bg-amber-200 text-amber-800 px-2 py-1 rounded-full">
-            {pendingApps.length} Awaiting Review
-          </span>
+          <div className="flex gap-2">
+            {pendingPayment.length > 0 && (
+              <span className="text-xs font-bold bg-orange-200 text-orange-800 px-2 py-1 rounded-full">
+                {pendingPayment.length} No Payment
+              </span>
+            )}
+            {paymentSubmitted.length > 0 && (
+              <span className="text-xs font-bold bg-blue-200 text-blue-800 px-2 py-1 rounded-full">
+                {paymentSubmitted.length} Verify Payment
+              </span>
+            )}
+            {paymentVerified.length > 0 && (
+              <span className="text-xs font-bold bg-green-200 text-green-800 px-2 py-1 rounded-full">
+                {paymentVerified.length} Ready to Approve
+              </span>
+            )}
+          </div>
         </div>
 
-        {pendingApps.length === 0 ? (
+        {pendingPayment.length === 0 && paymentSubmitted.length === 0 && paymentVerified.length === 0 ? (
           <div className="p-12 text-center text-slate-400">
             <ShieldCheck size={40} className="mx-auto mb-3 opacity-30" />
             <p className="font-medium">No pending applications</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {pendingApps.map((app) => (
+            {[...paymentVerified, ...paymentSubmitted, ...pendingPayment].map((app) => (
               <div key={app.id} className="hover:bg-slate-50/50 transition-colors">
                 {/* Summary Row */}
                 <div 
@@ -253,12 +292,83 @@ Need help? Reply to this message!`;
                         </a>
                       </div>
 
+                      {/* Payment Info */}
+                      {app.transaction_id ? (
+                        <div className="bg-white rounded-lg p-4 border-2 border-green-200">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <DollarSign size={16} className="text-green-600" />
+                              <span className="text-sm font-bold text-slate-900">Payment Submitted</span>
+                            </div>
+                            {app.payment_verified ? (
+                              <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                                ✓ Verified
+                              </span>
+                            ) : (
+                              <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded-full">
+                                Pending Verification
+                              </span>
+                            )}
+                          </div>
+                          <div className="space-y-2 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Transaction ID:</span>
+                              <span className="font-mono font-bold text-slate-900">{app.transaction_id}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Amount:</span>
+                              <span className="font-bold text-green-600">
+                                GHS {app.payment_amount?.toFixed(2) || '0.00'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Submitted:</span>
+                              <span className="text-slate-700">{formatDate(app.payment_date)}</span>
+                            </div>
+                          </div>
+                          
+                          {/* Verify Payment Button */}
+                          {!app.payment_verified && (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (confirm('Confirm you have verified this payment in your MoMo account?')) {
+                                  // We need to get current admin ID - for now use a placeholder
+                                  // In production, get from auth context
+                                  handleVerifyPayment(app.id, true, 'admin-id-placeholder');
+                                }
+                              }}
+                              disabled={verifyingPaymentId === app.id}
+                              className="w-full mt-3 bg-green-600 text-white py-2 rounded-lg font-bold text-sm hover:bg-green-500 transition-colors flex items-center justify-center gap-2"
+                            >
+                              {verifyingPaymentId === app.id ? (
+                                <Loader2 size={14} className="animate-spin" />
+                              ) : (
+                                <CheckCircle size={14} />
+                              )}
+                              Verify Payment
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="bg-amber-50 rounded-lg p-4 border border-amber-200 flex items-start gap-3">
+                          <AlertCircle size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <div className="text-sm font-bold text-amber-900 mb-1">Awaiting Payment</div>
+                            <div className="text-xs text-amber-700">
+                              Applicant has not submitted payment proof yet. They will receive payment instructions after form submission.
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Actions */}
                       <div className="flex gap-3 pt-2">
                         <button
                           onClick={(e) => { e.stopPropagation(); handleApprove(app); }}
-                          disabled={processingId === app.id}
-                          className="flex-1 bg-green-600 text-white py-2.5 rounded-lg font-bold text-sm hover:bg-green-500 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                          disabled={processingId === app.id || !app.payment_verified}
+                          className="flex-1 bg-green-600 text-white py-2.5 rounded-lg font-bold text-sm hover:bg-green-500 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={!app.payment_verified ? 'Payment must be verified first' : ''}
                         >
                           {processingId === app.id ? (
                             <Loader2 size={16} className="animate-spin" />

@@ -71,7 +71,7 @@ export async function submitApplicationOnly(formData: FormData) {
   if (uploadError) return { error: "Document upload failed." };
 
   // 4. Save Application to 'Holding Tank'
-  const { error: dbError } = await supabaseAdmin
+  const { data: newApplication, error: dbError } = await supabaseAdmin
     .from('onboarding_applications')
     .insert({
       // We DO NOT set 'user_id' yet because the user doesn't exist.
@@ -89,15 +89,17 @@ export async function submitApplicationOnly(formData: FormData) {
       business_slug: storeSlug,
       plan_id: planId,
       status: 'pending'
-    });
+    })
+    .select('id')
+    .single();
 
-  if (dbError) {
+  if (dbError || !newApplication) {
     console.error(dbError);
     return { error: "Application Error. Please try again." };
   }
 
-  // 5. Success -> Redirect to a "Thank You" page (No login state)
-  return { success: true };
+  // 5. Success -> Return application ID for payment redirect
+  return { success: true, applicationId: newApplication.id };
 }
 
 export async function checkSlug(slug: string) {

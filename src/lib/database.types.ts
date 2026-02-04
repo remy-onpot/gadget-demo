@@ -532,11 +532,18 @@ export type Database = {
           id_card_url: string
           legal_name: string | null
           password_hash: string | null
+          payment_amount: number | null
+          payment_date: string | null
+          payment_notes: string | null
+          payment_verified: boolean | null
+          payment_verified_at: string | null
+          payment_verified_by: string | null
           phone: string
           physical_address: string | null
           plan_id: string
           rejection_reason: string | null
           status: string | null
+          transaction_id: string | null
           updated_at: string | null
           user_id: string | null
         }
@@ -550,11 +557,18 @@ export type Database = {
           id_card_url: string
           legal_name?: string | null
           password_hash?: string | null
+          payment_amount?: number | null
+          payment_date?: string | null
+          payment_notes?: string | null
+          payment_verified?: boolean | null
+          payment_verified_at?: string | null
+          payment_verified_by?: string | null
           phone: string
           physical_address?: string | null
           plan_id?: string
           rejection_reason?: string | null
           status?: string | null
+          transaction_id?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -568,11 +582,18 @@ export type Database = {
           id_card_url?: string
           legal_name?: string | null
           password_hash?: string | null
+          payment_amount?: number | null
+          payment_date?: string | null
+          payment_notes?: string | null
+          payment_verified?: boolean | null
+          payment_verified_at?: string | null
+          payment_verified_by?: string | null
           phone?: string
           physical_address?: string | null
           plan_id?: string
           rejection_reason?: string | null
           status?: string | null
+          transaction_id?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -990,6 +1011,36 @@ export type Database = {
           plan_id?: string
           settings?: Json | null
           slug?: string
+        }
+        Relationships: []
+      }
+      system_settings: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          key: string
+          updated_at: string | null
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          key: string
+          updated_at?: string | null
+          updated_by?: string | null
+          value: Json
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          key?: string
+          updated_at?: string | null
+          updated_by?: string | null
+          value?: Json
         }
         Relationships: []
       }

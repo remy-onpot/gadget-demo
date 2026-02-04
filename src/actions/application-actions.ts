@@ -42,8 +42,18 @@ export async function approveApplication(applicationId: string) {
       return { error: 'Application not found' };
     }
     
-    if (app.status !== 'pending') {
-      return { error: 'Application already processed' };
+    // Security: Ensure application is in correct state
+    if (app.status === 'approved') {
+      return { error: 'Application already approved' };
+    }
+
+    if (app.status === 'rejected') {
+      return { error: 'Cannot approve a rejected application' };
+    }
+
+    // Security: Payment must be verified before approval
+    if (!app.payment_verified) {
+      return { error: 'Payment must be verified before approval' };
     }
 
     // 2. Check if email already exists in auth

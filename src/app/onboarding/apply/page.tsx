@@ -84,9 +84,12 @@ export default function ApplicationPage() {
         
         if (res?.error) {
             toast.error(res.error);
-        } else {
+        } else if (res?.applicationId) {
             toast.success("Application Received!");
-            router.push('/onboarding/success'); // Redirect to "Check your email" page
+            // Redirect to payment page with application ID
+            router.push(`/onboarding/payment?id=${res.applicationId}`);
+        } else {
+            toast.error("Application submitted but ID not returned");
         }
     });
   };
