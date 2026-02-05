@@ -33,7 +33,7 @@ const ProductRow = ({ title, products, onViewAll }: { title: string, products: P
           </div>
           <div className="flex md:grid md:grid-cols-4 gap-4 overflow-x-auto md:overflow-visible pb-4 md:pb-0 snap-x no-scrollbar">
              {products.slice(0, 4).map(product => (
-                <div key={product.id} className="min-w-[260px] md:min-w-0 snap-start">
+                <div key={product.id} className="min-w-[120px] md:min-w-0 snap-start">
                    <ProductCard product={product} />
                 </div>
              ))}
