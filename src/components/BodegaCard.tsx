@@ -1,16 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, ShoppingBag } from 'lucide-react';
+import { ArrowRight, Image as ImageIcon } from 'lucide-react';
 import { ProductCardVisualProps } from '@/lib/types/card-types';
 
-/**
- * BodegaCard - Bold, colorful beverage-inspired design
- * Uses primaryColor as card background with nested image container
- * 
- * ✨ IMPROVED VERSION - Better matches original design while keeping all logic
- */
 export const BodegaCard = ({ 
   title, 
   price, 
@@ -18,101 +12,92 @@ export const BodegaCard = ({
   href, 
   tags,
   primaryColor,
-  borderRadius = '2rem', 
-  glassMode = false,
+  // These props are less relevant for the new look but kept to prevent TS errors
+  borderRadius, 
+  glassMode,
 }: ProductCardVisualProps) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
-  // ✅ Keep your radius calculation logic
-  const innerRadius = `calc(${borderRadius} - 0.75rem)`;
-  
-  // ✅ Keep your tag extraction logic
-  const condition = tags?.[0] || 'New';
-  const specTags = tags?.slice(1, 4) || [];
-
-  // ✅ Keep your color generation logic
-  const lighterBg = glassMode 
-    ? 'rgba(255, 255, 255, 0.25)' 
-    : `${primaryColor}30`;
+  // Map your existing 'tags' logic to a Category label
+  const category = tags?.[0] || 'Product';
 
   return (
-    <Link href={href} className="group block h-full select-none">
+    <Link 
+      href={href} 
+      className="group block h-full select-none"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <div 
-        className="relative h-full overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl"
-        style={{ 
-          backgroundColor: primaryColor, 
-          borderRadius,
-          ...(glassMode && { // ✅ Keep your glass mode spread logic
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-          })
-        }}
+        className="relative h-full flex flex-col bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 transition-all duration-500 ease-out hover:shadow-xl hover:-translate-y-1"
       >
-        {/* ✅ Keep your gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/20 pointer-events-none" />
         
-        {/* Image Container - IMPROVED: Bigger, more prominent, better spacing */}
-        <div 
-          className="relative m-4 overflow-hidden"
-          style={{ 
-            backgroundColor: lighterBg,
-            borderRadius: innerRadius,
-          }}
-        >
-          {/* Price Badge - IMPROVED: Larger, simpler, cleaner */}
-          <div className="absolute top-4 right-4 bg-white rounded-full px-4 py-2 shadow-lg z-10">
-            <span className="text-sm font-semibold text-slate-900">{price}</span>
-          </div>
+        {/* --- Image Section (4:5 Aspect Ratio) --- */}
+        <div className="relative aspect-[4/5] overflow-hidden bg-gray-100">
           
-          {/* Product Image - IMPROVED: Much taller, rounded, better effects */}
-          <div className="h-72 flex items-center justify-center p-6">
-            {/* ✅ Keep your imageUrl conditional logic */}
-            {imageUrl ? (
-              <img 
-                src={imageUrl} 
-                alt={title}
-                className="w-full h-full object-cover rounded-2xl drop-shadow-2xl group-hover:scale-105 transition-transform duration-500"
-              />
-            ) : (
-              <div className="flex flex-col items-center text-white/40">
-                <ShoppingBag size={48} strokeWidth={1} />
-              </div>
-            )}
-          </div>
+          {/* Loading Skeleton */}
+          {!imageLoaded && (
+            <div className="absolute inset-0 bg-gray-200 animate-pulse" />
+          )}
           
-          {/* Bottom Info - IMPROVED: Changed to delivery info like original */}
-          <div className="absolute bottom-4 left-4 right-4">
-            <p className="text-xs text-white/80 font-medium">
-              Free Delivery until 16/06/2026
-            </p>
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={title}
+              loading="lazy"
+              onLoad={() => setImageLoaded(true)}
+              className={`absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out ${
+                isHovered ? 'scale-110' : 'scale-100'
+              } ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+            />
+          ) : (
+             /* Fallback if no image provided */
+            <div className="absolute inset-0 flex items-center justify-center text-gray-300">
+              <ImageIcon size={48} strokeWidth={1} />
+            </div>
+          )}
+
+          {/* Gradient Overlay on Hover */}
+          <div className={`absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent transition-opacity duration-300 ${
+            isHovered ? 'opacity-100' : 'opacity-0'
+          }`} />
+
+          {/* Slide-Up Arrow Button */}
+          {/* We use primaryColor here for the button background */}
+          <div className={`absolute bottom-3 right-3 transition-all duration-300 transform ${
+            isHovered ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'
+          }`}>
+            <div 
+              className="p-3 rounded-full text-white shadow-lg flex items-center justify-center"
+              style={{ backgroundColor: primaryColor || '#000' }}
+            >
+              <ArrowRight className="w-5 h-5" />
+            </div>
           </div>
         </div>
 
-        {/* Product Info - IMPROVED: Better text sizes and spacing */}
-        <div className="relative z-10 px-6 pb-6 pt-2">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <h3 className="text-xl font-semibold text-white leading-tight line-clamp-2 flex-1">
-              {title}
-            </h3>
-            <button className="text-sm font-medium text-white flex items-center gap-1 hover:gap-2 transition-all">
-              Order Now
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
+        {/* --- Content Section --- */}
+        <div className="p-4 flex flex-col flex-grow gap-1">
+          {/* Category (mapped from tags) */}
+          <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">
+            {category}
+          </p>
 
-          {/* Spec Tags - IMPROVED: Better sizing and styling */}
-          {/* ✅ Keep your conditional rendering logic */}
-          {specTags.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {specTags.map((tag, index) => (
-                <span
-                  key={index}
-                  className="px-3 py-1.5 rounded-full text-xs font-medium bg-white/25 text-white backdrop-blur-sm"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
+          {/* Title - Uses primaryColor on hover */}
+          <h3 
+            className="text-sm font-semibold text-gray-900 line-clamp-2 leading-tight transition-colors duration-200"
+            style={isHovered ? { color: primaryColor } : {}}
+          >
+            {title}
+          </h3>
+
+          {/* Price */}
+          <div className="pt-1 mt-auto">
+            <span className="text-base font-bold text-gray-900">
+              {price}
+            </span>
+          </div>
         </div>
       </div>
     </Link>
